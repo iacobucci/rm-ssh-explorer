@@ -1,0 +1,9 @@
+{
+    "id": "ssh-explorer",
+    "name": "SSH Explorer",
+    "loadsBackend": false,
+    "entry": "/ui/main.qml",
+    "supportsScaling": true,
+    "canHaveMultipleFrontends": false,
+    "aspectRatio": "original"
+}

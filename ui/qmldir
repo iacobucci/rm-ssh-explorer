@@ -1,0 +1,5 @@
+singleton Style 1.0 Style.qml
+ConnectionView 1.0 ConnectionView.qml
+ExplorerView 1.0 ExplorerView.qml
+VirtualKeyboard 1.0 VirtualKeyboard.qml
+ImportModal 1.0 ImportModal.qml

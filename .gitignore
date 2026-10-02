@@ -1,0 +1,16 @@
+# Build artifacts
+dist/
+resources.rcc
+*.tar.gz
+
+# Preview build artifacts
+preview/preview-app
+preview/*.o
+preview/moc_*
+preview/Makefile*
+preview/.qmake.stash
+
+# OS / Editor files
+.DS_Store
+*.swp
+*~

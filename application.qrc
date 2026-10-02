@@ -1,0 +1,11 @@
+<RCC>
+    <qresource>
+        <file>ui/main.qml</file>
+        <file>ui/Style.qml</file>
+        <file>ui/qmldir</file>
+        <file>ui/ConnectionView.qml</file>
+        <file>ui/ExplorerView.qml</file>
+        <file>ui/VirtualKeyboard.qml</file>
+        <file>ui/ImportModal.qml</file>
+    </qresource>
+</RCC>
