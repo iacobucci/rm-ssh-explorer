@@ -221,25 +221,53 @@ cmd_import_pdf() {
     fi
 
     TMP_PDF="/tmp/ssh_import_$$.pdf"
-    rm -f "$TMP_PDF"
+    TMP_ERR="/tmp/ssh_import_$$.err"
+    rm -f "$TMP_PDF" "$TMP_ERR"
 
-    # Download via SSH cat
-    run_ssh "cat \"$REMOTE_PATH\"" > "$TMP_PDF" 2>/dev/null
-    STATUS=$?
+    # Download via SSH streaming with generous timeout
+    # Pass REMOTE_PATH safely via sh -s to handle spaces and quotes
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 180 "$SSH_BIN" $SSH_ARGS "$SSH_TARGET" "sh -s -- \"$REMOTE_PATH\"" << 'REMOTE_CAT_EOF' > "$TMP_PDF" 2> "$TMP_ERR"
+TARGET="$1"
+if [ ! -f "$TARGET" ] && [ ! -r "$TARGET" ]; then
+    echo "Cannot read remote file: $TARGET" >&2
+    exit 1
+fi
+exec cat "$TARGET"
+REMOTE_CAT_EOF
+        STATUS=$?
+    else
+        "$SSH_BIN" $SSH_ARGS "$SSH_TARGET" "sh -s -- \"$REMOTE_PATH\"" << 'REMOTE_CAT_EOF' > "$TMP_PDF" 2> "$TMP_ERR"
+TARGET="$1"
+if [ ! -f "$TARGET" ] && [ ! -r "$TARGET" ]; then
+    echo "Cannot read remote file: $TARGET" >&2
+    exit 1
+fi
+exec cat "$TARGET"
+REMOTE_CAT_EOF
+        STATUS=$?
+    fi
 
     if [ $STATUS -ne 0 ] || [ ! -s "$TMP_PDF" ]; then
+        ERR_MSG="Failed to download file from remote host"
+        if [ -s "$TMP_ERR" ]; then
+            ERR_MSG=$(head -n 2 "$TMP_ERR" | tr '\n' ' ')
+        fi
+        rm -f "$TMP_PDF" "$TMP_ERR"
+        CLEAN_ERR=$(echo "$ERR_MSG" | tr '\n' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g')
+        printf '{"success":false,"error":"%s"}\n' "$CLEAN_ERR"
+        return
+    fi
+    rm -f "$TMP_ERR"
+
+    # Verify PDF magic bytes using dd (POSIX and BusyBox compliant, avoids missing head -c)
+    HEADER=$(dd if="$TMP_PDF" bs=4 count=1 2>/dev/null || true)
+    if [ "$HEADER" != "%PDF" ] && ! head -n 3 "$TMP_PDF" 2>/dev/null | grep -q "%PDF"; then
         rm -f "$TMP_PDF"
-        printf '{"success":false,"error":"Failed to download file from remote host"}\n'
+        printf '{"success":false,"error":"%s"}\n' "Downloaded file is not a valid PDF (missing %PDF header)"
         return
     fi
 
-    # Verify PDF magic bytes (%PDF)
-    HEADER=$(head -c 4 "$TMP_PDF" 2>/dev/null || true)
-    if [ "$HEADER" != "%PDF" ]; then
-        rm -f "$TMP_PDF"
-        printf '{"success":false,"error":"Downloaded file is not a valid PDF (%PDF header not found)"}\n'
-        return
-    fi
 
     # Strategy 1: Upload via local USB web interface (127.0.0.1/upload)
     # This automatically registers the file in xochitl immediately with zero restart needed.
@@ -374,10 +402,10 @@ cmd_import_local_pdf() {
     TMP_PDF="/tmp/ssh_import_$$.pdf"
     cp "$LOCAL_PATH" "$TMP_PDF"
 
-    HEADER=$(head -c 4 "$TMP_PDF" 2>/dev/null || true)
-    if [ "$HEADER" != "%PDF" ]; then
+    HEADER=$(dd if="$TMP_PDF" bs=4 count=1 2>/dev/null || true)
+    if [ "$HEADER" != "%PDF" ] && ! head -n 3 "$TMP_PDF" 2>/dev/null | grep -q "%PDF"; then
         rm -f "$TMP_PDF"
-        printf '{"success":false,"error":"File is not a valid PDF"}\n'
+        printf '{"success":false,"error":"%s"}\n' "File is not a valid PDF (missing %PDF header)"
         return
     fi
 

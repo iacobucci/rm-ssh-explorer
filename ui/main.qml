@@ -47,8 +47,15 @@ Rectangle {
 
         try {
             var procOut = JSON.parse(resStr);
-            if (procOut.stdout && procOut.stdout.trim().length > 0) {
-                return JSON.parse(procOut.stdout);
+            var stdoutStr = procOut.stdout ? procOut.stdout.trim() : "";
+            if (stdoutStr.length > 0) {
+                var firstBrace = stdoutStr.indexOf("{");
+                var lastBrace = stdoutStr.lastIndexOf("}");
+                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
+                    var jsonStr = stdoutStr.substring(firstBrace, lastBrace + 1);
+                    return JSON.parse(jsonStr);
+                }
+                return { success: false, error: stdoutStr };
             } else if (procOut.stderr && procOut.stderr.trim().length > 0) {
                 return { success: false, error: procOut.stderr.trim() };
             }
