@@ -483,6 +483,15 @@ CONTENT_EOF
     printf '{"success":true,"method":"direct_xochitl","title":"%s","uuid":"%s","message":"PDF written to xochitl storage"}\n' "$SAFE_TITLE" "$UUID"
 }
 
+cmd_restart_xochitl() {
+    if command -v systemctl >/dev/null 2>&1; then
+        ( sleep 1 && systemctl restart xochitl ) >/dev/null 2>&1 &
+        printf '{"success":true,"message":"xochitl is restarting..."}\n'
+    else
+        printf '{"success":false,"error":"systemctl not found"}\n'
+    fi
+}
+
 # Main command router
 ACTION="$1"
 shift || true
@@ -500,6 +509,9 @@ case "$ACTION" in
     import-local)
         cmd_import_local_pdf "$@"
         ;;
+    restart-xochitl)
+        cmd_restart_xochitl "$@"
+        ;;
     load-config)
         cmd_load_config "$@"
         ;;
@@ -511,4 +523,5 @@ case "$ACTION" in
         exit 1
         ;;
 esac
+
 

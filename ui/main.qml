@@ -183,6 +183,11 @@ Rectangle {
         importTimer.restart();
     }
 
+    function restartXochitl() {
+        runHelper("restart-xochitl", []);
+        appRoot.close();
+    }
+
     Timer {
         id: importTimer
         property string remotePath: ""
@@ -202,6 +207,7 @@ Rectangle {
             importModal.isWorking = false;
             if (res && res.success) {
                 importModal.isSuccess = true;
+                importModal.importMethod = res.method || "";
                 importModal.statusText = res.message || "Import completed successfully.";
             } else {
                 importModal.isError = true;
@@ -222,13 +228,13 @@ Rectangle {
         color: Style.invertedBg
         z: 10
 
+        // Left Branding & Status
         Row {
-            anchors.fill: parent
+            anchors.left: parent.left
             anchors.leftMargin: 16
-            anchors.rightMargin: 16
+            anchors.verticalCenter: parent.verticalCenter
             spacing: 12
 
-            // App Title
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "SSH Explorer"
@@ -237,7 +243,6 @@ Rectangle {
                 color: Style.invertedFg
             }
 
-            // Connection Badge / Status
             Rectangle {
                 height: 36
                 width: hostStatusText.width + 20
@@ -254,63 +259,82 @@ Rectangle {
                     color: appRoot.currentMode === "explorer" ? Style.fg : "#AAAAAA"
                 }
             }
+        }
 
-            Item {
-                // Spacer
-                width: topNav.width - 550
-                height: 1
-            }
+        // Right Navigation Action Buttons
+        Row {
+            anchors.right: parent.right
+            anchors.rightMargin: 16
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 10
 
-            // Navigation Action Buttons
-            Row {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 10
+            // Profiles / Setup Button
+            Rectangle {
+                width: 120
+                height: 44
+                color: pNavMa.pressed ? Style.subtleBg : Style.bg
+                radius: Style.cornerRadius
+                visible: appRoot.currentMode === "explorer"
 
-                // Profiles / Setup Button
-                Rectangle {
-                    width: 140
-                    height: 44
-                    color: pNavMa.pressed ? Style.subtleBg : Style.bg
-                    radius: Style.cornerRadius
-                    visible: appRoot.currentMode === "explorer"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "⚙ Profiles"
-                        font.pixelSize: Style.fontSizeSmall
-                        font.bold: true
-                        color: Style.fg
-                    }
-                    MouseArea {
-                        id: pNavMa
-                        anchors.fill: parent
-                        onClicked: {
-                            virtualKeyboard.visible = false;
-                            appRoot.currentMode = "connection";
-                        }
+                Text {
+                    anchors.centerIn: parent
+                    text: "⚙ Profiles"
+                    font.pixelSize: Style.fontSizeSmall
+                    font.bold: true
+                    color: Style.fg
+                }
+                MouseArea {
+                    id: pNavMa
+                    anchors.fill: parent
+                    onClicked: {
+                        virtualKeyboard.visible = false;
+                        appRoot.currentMode = "connection";
                     }
                 }
+            }
 
-                // Close Application Button
-                Rectangle {
-                    width: 90
-                    height: 44
-                    color: closeMa.pressed ? Style.activeHighlight : Style.bg
-                    radius: Style.cornerRadius
+            // Quick Reload Library (Restart xochitl)
+            Rectangle {
+                width: 170
+                height: 44
+                color: rstNavMa.pressed ? Style.subtleBg : Style.bg
+                radius: Style.cornerRadius
 
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Exit ✕"
-                        font.pixelSize: Style.fontSizeSmall
-                        font.bold: true
-                        color: Style.fg
+                Text {
+                    anchors.centerIn: parent
+                    text: "⟳ Riavvia xochitl"
+                    font.pixelSize: Style.fontSizeSmall
+                    font.bold: true
+                    color: Style.fg
+                }
+                MouseArea {
+                    id: rstNavMa
+                    anchors.fill: parent
+                    onClicked: {
+                        appRoot.restartXochitl();
                     }
-                    MouseArea {
-                        id: closeMa
-                        anchors.fill: parent
-                        onClicked: {
-                            appRoot.close();
-                        }
+                }
+            }
+
+            // Close Application Button
+            Rectangle {
+                width: 80
+                height: 44
+                color: closeMa.pressed ? Style.activeHighlight : Style.bg
+                radius: Style.cornerRadius
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Exit ✕"
+                    font.pixelSize: Style.fontSizeSmall
+                    font.bold: true
+                    color: Style.fg
+                }
+                MouseArea {
+                    id: closeMa
+                    anchors.fill: parent
+                    onClicked: {
+                        appRoot.close();
                     }
                 }
             }
@@ -424,6 +448,10 @@ Rectangle {
 
         onRequestImport: (path, title) => {
             appRoot.executeImport(path, title);
+        }
+
+        onRequestRestartXochitl: {
+            appRoot.restartXochitl();
         }
 
         onRequestClose: {

@@ -16,9 +16,11 @@ Rectangle {
     property bool isWorking: false
     property bool isSuccess: false
     property bool isError: false
+    property string importMethod: ""
     property string errorMessage: ""
 
     signal requestImport(string path, string title)
+    signal requestRestartXochitl()
     signal requestClose()
     signal inputFocused(var item)
 
@@ -333,6 +335,58 @@ Rectangle {
 
                 Item { width: 1; height: 10 }
 
+                // Actions for direct filesystem import (requires quick xochitl reload to show)
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 12
+                    visible: modalRoot.importMethod === "direct_xochitl"
+
+                    Rectangle {
+                        width: 280
+                        height: Style.buttonHeight
+                        color: restartMa.pressed ? Style.bg : Style.invertedBg
+                        border.color: Style.border
+                        border.width: Style.borderWidth
+                        radius: Style.cornerRadius
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "⟳ Riavvia xochitl ora"
+                            font.pixelSize: Style.fontSizeBody
+                            font.bold: true
+                            color: restartMa.pressed ? Style.invertedBg : Style.invertedFg
+                        }
+                        MouseArea {
+                            id: restartMa
+                            anchors.fill: parent
+                            onClicked: modalRoot.requestRestartXochitl()
+                        }
+                    }
+
+                    Rectangle {
+                        width: 190
+                        height: Style.buttonHeight
+                        color: contMa.pressed ? Style.activeHighlight : Style.bg
+                        border.color: Style.border
+                        border.width: Style.borderWidth
+                        radius: Style.cornerRadius
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Continua"
+                            font.pixelSize: Style.fontSizeBody
+                            font.bold: true
+                            color: Style.fg
+                        }
+                        MouseArea {
+                            id: contMa
+                            anchors.fill: parent
+                            onClicked: modalRoot.requestClose()
+                        }
+                    }
+                }
+
+                // Action for web_interface (already indexed immediately)
                 Rectangle {
                     width: 220
                     height: Style.buttonHeight
@@ -341,6 +395,7 @@ Rectangle {
                     border.color: Style.border
                     border.width: Style.borderWidth
                     radius: Style.cornerRadius
+                    visible: modalRoot.importMethod !== "direct_xochitl"
 
                     Text {
                         anchors.centerIn: parent
