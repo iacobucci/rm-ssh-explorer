@@ -100,7 +100,14 @@ TARGET="$1"
 if [ "$TARGET" = "~" ] || [ -z "$TARGET" ]; then
     cd "$HOME" 2>/dev/null || cd /
 else
-    cd "$TARGET" 2>/dev/null || { echo "ERR:Cannot access directory: $TARGET"; exit 1; }
+    CD_ERR=$(cd "$TARGET" 2>&1)
+    CD_RET=$?
+    if [ $CD_RET -ne 0 ]; then
+        CLEAN_CD_ERR=$(echo "$CD_ERR" | tr '\n' ' ' | sed 's/.*: //')
+        [ -z "$CLEAN_CD_ERR" ] && CLEAN_CD_ERR="Permission denied or directory unreachable"
+        echo "ERR:Cannot access directory '$TARGET': $CLEAN_CD_ERR"
+        exit 1
+    fi
 fi
 
 CWD=$(pwd -P 2>/dev/null || pwd)
@@ -113,7 +120,7 @@ for f in .* *; do
     if [ -d "$f" ]; then
         echo "D:$f"
     elif [ -f "$f" ]; then
-        sz=$(wc -c < "$f" 2>/dev/null || stat -c %s "$f" 2>/dev/null || echo 0)
+        sz=$(stat -c %s "$f" 2>/dev/null || stat -f %z "$f" 2>/dev/null || ls -ldn "$f" 2>/dev/null | awk '{print $5}' || echo 0)
         sz=$(echo "$sz" | tr -d ' ')
         echo "F:$sz:$f"
     fi
