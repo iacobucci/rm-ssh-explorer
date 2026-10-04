@@ -100,9 +100,8 @@ TARGET="$1"
 if [ "$TARGET" = "~" ] || [ -z "$TARGET" ]; then
     cd "$HOME" 2>/dev/null || cd /
 else
-    CD_ERR=$(cd "$TARGET" 2>&1)
-    CD_RET=$?
-    if [ $CD_RET -ne 0 ]; then
+    if ! cd "$TARGET" 2>/dev/null; then
+        CD_ERR=$(cd "$TARGET" 2>&1)
         CLEAN_CD_ERR=$(echo "$CD_ERR" | tr '\n' ' ' | sed 's/.*: //')
         [ -z "$CLEAN_CD_ERR" ] && CLEAN_CD_ERR="Permission denied or directory unreachable"
         echo "ERR:Cannot access directory '$TARGET': $CLEAN_CD_ERR"
@@ -110,7 +109,7 @@ else
     fi
 fi
 
-CWD=$(pwd -P 2>/dev/null || pwd)
+CWD=$(pwd -L 2>/dev/null || pwd)
 echo "CWD:$CWD"
 
 for f in .* *; do
