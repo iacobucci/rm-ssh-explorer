@@ -1,8 +1,6 @@
 # SSH Explorer for reMarkable 2
 
-**SSH Explorer** is a native file browser and PDF importer for **reMarkable 2**, built on the **AppLoad** (XOVI) ecosystem. It allows you to browse remote file systems over SSH (Linux, macOS, NAS, Raspberry Pi) and download PDF documents directly into your reMarkable library.
-
-Designed specifically for the reMarkable 2 E-Ink Carta display (1404x1872), it runs seamlessly on stock firmware with the Vellum environment.
+**SSH Explorer** is a native file browser and PDF importer for **reMarkable** tablets, built on the [**AppLoad**](https://github.com/asivery/rm-appload) ([XOVI](https://github.com/asivery/xovi)) ecosystem. It allows you to browse remote file systems over SSH and download PDF documents directly into your reMarkable library.
 
 <p align="center">
   <img src="res/screenshot.webp" alt="SSH Explorer on reMarkable 2" width="550" />
