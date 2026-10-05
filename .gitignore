@@ -9,6 +9,7 @@ preview/*.o
 preview/moc_*
 preview/Makefile*
 preview/.qmake.stash
+preview/ui
 
 # OS / Editor files
 .DS_Store

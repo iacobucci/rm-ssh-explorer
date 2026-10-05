@@ -148,7 +148,7 @@ Rectangle {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "⇧ SHIFT"
+                    text: "SHIFT"
                     font.pixelSize: Style.fontSizeSmall
                     font.bold: true
                     color: keyboardRoot.shiftActive ? Style.invertedFg : Style.fg
@@ -195,7 +195,7 @@ Rectangle {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "⌫ BACK"
+                    text: "BACK"
                     font.pixelSize: Style.fontSizeSmall
                     font.bold: true
                     color: bsMa.pressed ? Style.invertedFg : Style.fg
@@ -294,7 +294,7 @@ Rectangle {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "DONE ✕"
+                    text: "DONE"
                     font.pixelSize: Style.fontSizeSmall
                     font.bold: true
                     color: doneMa.pressed ? Style.invertedBg : Style.invertedFg

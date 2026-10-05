@@ -60,7 +60,7 @@ Item {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "⬆ Up"
+                        text: "Up"
                         font.pixelSize: Style.fontSizeBody
                         font.bold: true
                         color: (currentPath === "/" || currentPath === parentPath) ? Style.subtleFg : (upMa.pressed ? Style.invertedFg : Style.fg)
@@ -109,7 +109,7 @@ Item {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "⟳ Refresh"
+                        text: "Refresh"
                         font.pixelSize: Style.fontSizeSmall
                         font.bold: true
                         color: refMa.pressed ? Style.invertedFg : Style.fg
@@ -132,7 +132,7 @@ Item {
 
                     Text {
                         anchors.centerIn: parent
-                        text: explorerRoot.filterOnlyPdfs ? "★ PDFs Only" : "Show All Files"
+                        text: explorerRoot.filterOnlyPdfs ? "PDFs Only" : "Show All Files"
                         font.pixelSize: Style.fontSizeSmall
                         font.bold: true
                         color: explorerRoot.filterOnlyPdfs ? Style.invertedFg : Style.fg
@@ -167,8 +167,9 @@ Item {
                     border.width: 2
                     Text {
                         anchors.centerIn: parent
-                        text: "⌛"
+                        text: "..."
                         font.pixelSize: 28
+                        font.bold: true
                     }
                 }
 
@@ -348,7 +349,7 @@ Item {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: modelData.is_pdf ? "Import ➔" : "Open ➔"
+                                text: modelData.is_pdf ? "Import" : "Open"
                                 font.pixelSize: Style.fontSizeSmall
                                 font.bold: true
                                 color: Style.fg
@@ -418,7 +419,7 @@ Item {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "▲ Page Up"
+                        text: "Page Up"
                         font.pixelSize: Style.fontSizeSmall
                         font.bold: true
                         color: pgUpMa.pressed ? Style.invertedFg : Style.fg
@@ -445,7 +446,7 @@ Item {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "▼ Page Down"
+                        text: "Page Down"
                         font.pixelSize: Style.fontSizeSmall
                         font.bold: true
                         color: pgDnMa.pressed ? Style.invertedFg : Style.fg

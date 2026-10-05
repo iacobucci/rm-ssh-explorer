@@ -118,7 +118,7 @@ Rectangle {
         var jsonStr = JSON.stringify(configData);
         var res = runHelper("save-config", [jsonStr]);
         if (res && res.success) {
-            connectionView.statusMessage = "✓ Profile '" + name + "' saved successfully";
+            connectionView.statusMessage = "Profile '" + name + "' saved successfully";
             connectionView.testSuccess = true;
         } else {
             connectionView.statusMessage = "Failed to save profile: " + (res ? res.error : "Unknown error");
@@ -278,7 +278,7 @@ Rectangle {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "⚙ Profiles"
+                    text: "Profiles"
                     font.pixelSize: Style.fontSizeSmall
                     font.bold: true
                     color: Style.fg
@@ -295,14 +295,14 @@ Rectangle {
 
             // Quick Reload Library (Restart xochitl)
             Rectangle {
-                width: 170
+                width: 150
                 height: 44
                 color: rstNavMa.pressed ? Style.subtleBg : Style.bg
                 radius: Style.cornerRadius
 
                 Text {
                     anchors.centerIn: parent
-                    text: "⟳ Riavvia xochitl"
+                    text: "Restart xochitl"
                     font.pixelSize: Style.fontSizeSmall
                     font.bold: true
                     color: Style.fg
@@ -325,7 +325,7 @@ Rectangle {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "Exit ✕"
+                    text: "Exit"
                     font.pixelSize: Style.fontSizeSmall
                     font.bold: true
                     color: Style.fg
@@ -397,10 +397,10 @@ Rectangle {
                 connectionView.isTesting = false;
                 if (res && res.success) {
                     connectionView.testSuccess = true;
-                    connectionView.statusMessage = "✓ Connection test succeeded!";
+                    connectionView.statusMessage = "Connection test succeeded!";
                 } else {
                     connectionView.testSuccess = false;
-                    connectionView.statusMessage = "✗ Connection failed: " + (res ? res.error : "Unknown error");
+                    connectionView.statusMessage = "Connection failed: " + (res ? res.error : "Unknown error");
                 }
             }
         }

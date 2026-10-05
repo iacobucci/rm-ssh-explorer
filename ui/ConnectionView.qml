@@ -447,7 +447,7 @@ Item {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "Connect & Explore ➔"
+                        text: "Connect & Explore"
                         font.pixelSize: Style.fontSizeBody
                         font.bold: true
                         color: connMa.pressed ? Style.invertedBg : Style.invertedFg

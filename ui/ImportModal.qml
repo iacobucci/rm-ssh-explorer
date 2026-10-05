@@ -87,7 +87,7 @@ Rectangle {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "✕"
+                        text: "X"
                         font.pixelSize: 18
                         font.bold: true
                         color: closeBtnMa.pressed ? Style.invertedFg : Style.fg
@@ -301,8 +301,9 @@ Rectangle {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "✓"
-                        font.pixelSize: 36
+                        text: "OK"
+                        font.pixelSize: 22
+                        font.bold: true
                         color: Style.invertedFg
                     }
                 }
@@ -342,7 +343,7 @@ Rectangle {
                     visible: modalRoot.importMethod === "direct_xochitl"
 
                     Rectangle {
-                        width: 280
+                        width: 250
                         height: Style.buttonHeight
                         color: restartMa.pressed ? Style.bg : Style.invertedBg
                         border.color: Style.border
@@ -351,7 +352,7 @@ Rectangle {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "⟳ Riavvia xochitl ora"
+                            text: "Restart xochitl now"
                             font.pixelSize: Style.fontSizeBody
                             font.bold: true
                             color: restartMa.pressed ? Style.invertedBg : Style.invertedFg
@@ -364,7 +365,7 @@ Rectangle {
                     }
 
                     Rectangle {
-                        width: 190
+                        width: 170
                         height: Style.buttonHeight
                         color: contMa.pressed ? Style.activeHighlight : Style.bg
                         border.color: Style.border
@@ -373,7 +374,7 @@ Rectangle {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "Continua"
+                            text: "Continue"
                             font.pixelSize: Style.fontSizeBody
                             font.bold: true
                             color: Style.fg

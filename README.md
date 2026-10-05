@@ -1,25 +1,41 @@
-# SSH Explorer per reMarkable 2
+# SSH Explorer for reMarkable 2
 
-**SSH Explorer** è un'applicazione nativa per **reMarkable 2** basata sul framework **AppLoad** (estensione XOVI). Permette di navigare tramite SSH su file server remoti (Linux, macOS, NAS, Raspberry Pi, VPS) e importare direttamente file PDF nella libreria del tablet.
+**SSH Explorer** is a native file browser and PDF importer for **reMarkable 2**, built on the **AppLoad** (XOVI) ecosystem. It allows you to browse remote file systems over SSH (Linux, macOS, NAS, Raspberry Pi) and download PDF documents directly into your reMarkable library.
 
-L'applicazione è progettata su misura per l'hardware del reMarkable 2 (schermo E-Ink Carta 1404×1872) e rispetta rigorosamente i requisiti del dispositivo stock e dell'ecosistema **Vellum**.
+Designed specifically for the reMarkable 2 E-Ink Carta display (1404x1872), it runs seamlessly on stock firmware with the Vellum environment.
 
----
-
-## 📋 Requisiti del Device
-
-* **Dispositivo:** reMarkable 2 (OS 3.28.0.172 / Yocto Linux armv7).
-* **Pacchetti Vellum installati:**
-  * `appload` (`0.6.0-r0`)
-  * `qt-command-executor` (`19.0.0-r4`)
-  * `qt-resource-rebuilder` (`19.0.0-r4`)
-  * `xovi` (`0.3.3-r2`) e `xovi-extensions`
-* **SSH Device:** Dropbear (`dbclient` / `ssh` e `scp` integrati) con chiavi SSH configurate (es. `/home/root/.ssh/id_dropbear` o `/home/root/.ssh/id_rsa`).
-* **Nessun pacchetto aggiuntivo richiesto:** non richiede Python né Node.js sul tablet.
+<p align="center">
+  <img src="res/screenshot.webp" alt="SSH Explorer on reMarkable 2" width="550" />
+</p>
 
 ---
 
-## 🏗️ Architettura
+## Features
+
+- **E-Ink Optimized UI:** High-contrast monochrome interface designed for minimal flicker, with dedicated Page Up / Page Down controls.
+- **On-Screen Touch Keyboard:** Integrated virtual keyboard for typing hosts, paths, and credentials directly on the tablet.
+- **Connection Profiles:** Save, manage, and test multiple SSH profiles stored in `~/.config/ssh-explorer/config.json`.
+- **Fast Directory Traversal:** Browse remote folders with toggleable PDF-only filter and human-readable file sizes.
+- **Dual PDF Import Methods:**
+  - *Zero-Restart (Primary):* Streams the PDF into the local USB web interface (`http://127.0.0.1/upload`), making files appear instantly in your library.
+  - *Direct Storage (Fallback):* Writes UUID metadata directly to xochitl storage, with a 1-tap quick reload button.
+- **Lightweight & Self-Contained:** No Python, Node.js, or heavyweight runtimes required on device. Powered by standard POSIX shell tools, Dropbear, and XOVI's CommandExecutor.
+
+---
+
+## Device Requirements
+
+* **Device:** reMarkable 2 (OS 3.x / Yocto Linux armv7).
+* **Installed Vellum packages:**
+  * `appload`
+  * `xovi` & `xovi-extensions`
+  * `qt-command-executor`
+  * `qt-resource-rebuilder`
+* **SSH Client:** Dropbear (`dbclient` / `ssh`) with configured identity keys (e.g. `/home/root/.ssh/id_dropbear` or `id_rsa`).
+
+---
+
+## Architecture
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -29,8 +45,8 @@ L'applicazione è progettata su misura per l'hardware del reMarkable 2 (schermo 
 │                          │                             │
 │    ┌─────────────────────▼───────────────────────┐     │
 │    │               SSH Explorer                  │     │
-│    │   (QML UI: ConnectionView, ExplorerView,    │     │
-│    │    VirtualKeyboard, ImportModal)            │     │
+│    │    (QML: ConnectionView, ExplorerView,      │     │
+│    │     VirtualKeyboard, ImportModal)           │     │
 │    └─────────────────────┬───────────────────────┘     │
 │                          │ net.asivery.CommandExecutor │
 │    ┌─────────────────────▼───────────────────────┐     │
@@ -46,93 +62,40 @@ L'applicazione è progettata su misura per l'hardware del reMarkable 2 (schermo 
          [ Remote SSH Server ]
 ```
 
-1. **Frontend QML (`ui/`):**
-   * Realizzato per il toolkit grafico supportato da **AppLoad** (`QtQuick 2.5`, `QtQuick.Controls 2.5`).
-   * Grafica ad alto contrasto bianco/nero (E-Ink friendly).
-   * **Tastiera virtuale touch integrata** per digitare indirizzi IP, percorsi e credenziali senza dipendere da tastiere esterne.
-   * **Controlli di paginazione E-Ink** (`Page Up` / `Page Down`) per evitare sfarfallii durante lo scroll.
-   * Badge ad alta leggibilità (`[DIR]`, `[PDF]`, `[FILE]`).
-
-2. **Backend Execution:**
-   * Utilizza il modulo XOVI `net.asivery.CommandExecutor 1.0` per richiamare in modo trasparente e privo di overhead lo script `ssh-helper.sh`.
-   * Nessun binario proprietario: tutto gira con i componenti standard di BusyBox/Dropbear e `sh`.
-
-3. **Meccanismo di Import PDF:**
-   * **Strategia Primaria (Zero-Restart):** invia il file PDF scaricato all'endpoint locale `http://127.0.0.1/upload` (utilizzato dall'interfaccia web USB di reMarkable). Il documento appare istantaneamente nella libreria "My Files" senza riavviare `xochitl`.
-   * **Strategia Secondaria (Fallback Diretto):** genera un UUID casuale (`/proc/sys/kernel/random/uuid`) e scrive direttamente i file `.pdf`, `.metadata` (JSON) e `.content` (JSON) in `/home/root/.local/share/remarkable/xochitl/`.
-
 ---
 
-## 📁 Struttura del Progetto
+## Quick Start
 
-```
-ssh-explorer/
-├── manifest.json              # Descrittore AppLoad per il launcher
-├── application.qrc            # Resource descriptor Qt
-├── icon.png                   # Icona dell'app per il menu di AppLoad (200x200)
-├── ssh-helper.sh              # Script helper POSIX per comandi SSH e importazione
-├── build.sh                   # Script di compilazione e packaging
-├── deploy.sh                  # Script per deploy rapido via SSH sul tablet
-├── ui/
-│   ├── main.qml               # Controller principale e barra di navigazione
-│   ├── Style.qml              # Costanti grafiche E-Ink (colori, metriche, font)
-│   ├── qmldir                 # Dichiarazione modulo QML
-│   ├── ConnectionView.qml     # Gestione profili host, test connessione, form
-│   ├── ExplorerView.qml       # Esploratore cartelle remote, filtri e paginazione
-│   ├── VirtualKeyboard.qml    # Tastiera a schermo touch con caratteri speciali
-│   └── ImportModal.qml        # Finestra di conferma, progresso e stato importazione
-├── preview/                   # Ambiente di test su PC Linux (stesso motore Qt5)
-│   ├── CommandExecutor.h
-│   ├── main.cpp
-│   └── preview.pro
-└── dist/                      # Pacchetto pronto per reMarkable
-    └── ssh-explorer/
-        ├── manifest.json
-        ├── icon.png
-        ├── resources.rcc      # Binary resource QML compilato
-        └── ssh-helper.sh
-```
+### 1. Build the Package
 
----
-
-## 🚀 Guida Rapida: Compilazione e Installazione
-
-### 1. Compilare il pacchetto
-
-Sul tuo PC (con `rcc` installato):
+Run on your computer (`rcc` required):
 ```bash
 ./build.sh
 ```
-Questo genererà la cartella `dist/ssh-explorer/` e il tarball `dist/ssh-explorer.tar.gz`.
+This packages QML resources into `dist/ssh-explorer/resources.rcc` and creates `dist/ssh-explorer.tar.gz`.
 
-### 2. Installare sul tablet reMarkable 2
+### 2. Deploy to reMarkable 2
 
-Se il tablet è collegato via cavo USB (IP di default `10.11.99.1`):
+Over USB (default IP `10.11.99.1`):
 ```bash
 ./deploy.sh
 ```
-Oppure specificando l'IP Wi-Fi del tablet:
+
+Or specify a Wi-Fi IP address:
 ```bash
 ./deploy.sh 192.168.1.150
 ```
 
-*In alternativa (installazione manuale):*
-Copia il contenuto di `dist/ssh-explorer/` nella cartella delle app di AppLoad:
-```bash
-scp -r dist/ssh-explorer root@10.11.99.1:/home/root/xovi/exthome/appload/
-ssh root@10.11.99.1 "chmod +x /home/root/xovi/exthome/appload/ssh-explorer/ssh-helper.sh"
-```
+### 3. Launch
 
-### 3. Avvio sul tablet
-1. Apri il menu **AppLoad** sul reMarkable.
-2. Tocca l'icona **SSH Explorer** (se non compare subito, premi *Reload* nel menu di AppLoad).
-3. Tocca brevemente per aprirlo a schermo intero, oppure tieni premuto per aprirlo in modalità finestra.
+1. Open the **AppLoad** launcher on your reMarkable tablet.
+2. Tap **SSH Explorer** to launch full screen (or long-press to window).
 
 ---
 
-## 💻 Test e Anteprima su PC
+## PC Desktop Preview
 
-È disponibile un runner di anteprima che permette di verificare l'interfaccia direttamente su PC Linux con la risoluzione del tablet:
+Test the interface locally on Linux with the tablet's native resolution:
 ```bash
 cd preview
 qmake && make
@@ -141,19 +104,25 @@ qmake && make
 
 ---
 
-## ⚙️ Funzionalità MVP
+## Project Structure
 
-* **Gestione Profili di Connessione:**
-  * Salvataggio e caricamento profili in `~/.config/ssh-explorer/config.json`.
-  * Supporto per porta SSH personalizzata, chiave d'identità e cartella iniziale.
-* **Test Connessione:**
-  * Verifica istantanea della raggiungibilità del server con feedback chiaro.
-* **Browser Remoto:**
-  * Navigazione gerarchica delle cartelle (`..` / entra in directory).
-  * Filtro rapido: *Tutti i file* oppure *Solo file PDF*.
-  * Dimensioni file formattate in modo leggibile (B, KB, MB, GB).
-  * Pulsanti di paginazione E-Ink per navigare agevolmente file list numerose.
-* **Importazione PDF:**
-  * Modalità anteprima con nome file, percorso e dimensione.
-  * Possibilità di rinominare il documento prima dell'importazione.
-  * Integrazione immediata nella libreria del reMarkable.
+```
+ssh-explorer/
+├── manifest.json              # AppLoad descriptor
+├── application.qrc            # Qt resource descriptor
+├── icon.png                   # Launcher icon (200x200)
+├── ssh-helper.sh              # POSIX backend helper for SSH commands & import
+├── build.sh                   # Build & packaging script
+├── deploy.sh                  # One-step SSH deployment script
+├── res/
+│   └── screenshot.webp        # Application screenshot
+├── ui/
+│   ├── main.qml               # App root, state coordinator & top bar
+│   ├── Style.qml              # E-Ink palette, metrics, and typography
+│   ├── qmldir                 # QML module definition
+│   ├── ConnectionView.qml     # Profile manager & connection form
+│   ├── ExplorerView.qml       # Remote file browser & pagination
+│   ├── VirtualKeyboard.qml    # On-screen touch keyboard
+│   └── ImportModal.qml        # Download progress & import confirmation modal
+└── preview/                   # Linux desktop Qt5 test runner
+```
