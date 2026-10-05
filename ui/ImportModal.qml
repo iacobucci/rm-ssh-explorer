@@ -328,7 +328,7 @@ Rectangle {
                 Text {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: modalRoot.statusText
+                    text: "A quick restart of xochitl is needed to refresh your library."
                     font.pixelSize: Style.fontSizeSmall
                     wrapMode: Text.WordWrap
                     color: Style.subtleFg
@@ -336,14 +336,13 @@ Rectangle {
 
                 Item { width: 1; height: 10 }
 
-                // Actions for direct filesystem import (requires quick xochitl reload to show)
+                // Actions: Restart xochitl now or Continue browsing
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: 12
-                    visible: modalRoot.importMethod === "direct_xochitl"
+                    spacing: 14
 
                     Rectangle {
-                        width: 250
+                        width: 230
                         height: Style.buttonHeight
                         color: restartMa.pressed ? Style.bg : Style.invertedBg
                         border.color: Style.border
@@ -365,7 +364,7 @@ Rectangle {
                     }
 
                     Rectangle {
-                        width: 170
+                        width: 140
                         height: Style.buttonHeight
                         color: contMa.pressed ? Style.activeHighlight : Style.bg
                         border.color: Style.border
@@ -384,31 +383,6 @@ Rectangle {
                             anchors.fill: parent
                             onClicked: modalRoot.requestClose()
                         }
-                    }
-                }
-
-                // Action for web_interface (already indexed immediately)
-                Rectangle {
-                    width: 220
-                    height: Style.buttonHeight
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    color: successDoneMa.pressed ? Style.bg : Style.invertedBg
-                    border.color: Style.border
-                    border.width: Style.borderWidth
-                    radius: Style.cornerRadius
-                    visible: modalRoot.importMethod !== "direct_xochitl"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Done"
-                        font.pixelSize: Style.fontSizeBody
-                        font.bold: true
-                        color: successDoneMa.pressed ? Style.invertedBg : Style.invertedFg
-                    }
-                    MouseArea {
-                        id: successDoneMa
-                        anchors.fill: parent
-                        onClicked: modalRoot.requestClose()
                     }
                 }
             }

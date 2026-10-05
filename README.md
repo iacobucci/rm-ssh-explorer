@@ -16,9 +16,9 @@ Designed specifically for the reMarkable 2 E-Ink Carta display (1404x1872), it r
 - **On-Screen Touch Keyboard:** Integrated virtual keyboard for typing hosts, paths, and credentials directly on the tablet.
 - **Connection Profiles:** Save, test, and delete multiple SSH profiles stored in `~/.config/ssh-explorer/config.json`.
 - **Fast Directory Traversal & Filters:** Browse remote folders with quick filter toggles for *PDFs Only* and *Hidden Files* (dotfiles), plus human-readable file sizes.
-- **Dual PDF Import Methods:**
-  - *Zero-Restart (Primary):* Streams the PDF into the local USB web interface (`http://127.0.0.1/upload`), making files appear instantly in your library.
-  - *Direct Storage (Fallback):* Writes UUID metadata directly to xochitl storage, with a 1-tap quick reload button.
+- **Fast PDF Import & Library Refresh:**
+  - Downloads and writes PDF documents and metadata directly to reMarkable storage (`~/.local/share/remarkable/xochitl/`).
+  - Offers a 1-tap **Restart xochitl now** button upon import to refresh the library immediately, or lets you continue browsing and restart later via the top-bar button.
 - **Lightweight & Self-Contained:** No Python, Node.js, or heavyweight runtimes required on device. Powered by standard POSIX shell tools, Dropbear, and XOVI's CommandExecutor.
 
 ---
@@ -54,10 +54,10 @@ Designed specifically for the reMarkable 2 E-Ink Carta display (1404x1872), it r
 │    └─────────────┬───────────────────┬───────────┘     │
 └──────────────────┼───────────────────┼─────────────────┘
                    │                   │
-         [ Dropbear SSH / SCP ]        │ [ HTTP POST localhost ]
+         [ Dropbear SSH / SCP ]        │ [ Direct Storage Write ]
                    │                   ▼
                    │         reMarkable Library
-                   │     (USB Web Interface / xochitl)
+                   │     (/home/root/.../xochitl)
                    ▼
          [ Remote SSH Server ]
 ```

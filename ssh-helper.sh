@@ -275,32 +275,9 @@ REMOTE_CAT_EOF
     fi
 
 
-    # Strategy 1: Upload via local USB web interface (127.0.0.1/upload)
-    # This automatically registers the file in xochitl immediately with zero restart needed.
-    CURL_OUT=$(curl -s -S -f --connect-timeout 2 --max-time 15 -X POST http://127.0.0.1/upload -F "file=@${TMP_PDF};filename=${FILENAME};type=application/pdf" 2>&1)
-    CURL_STATUS=$?
-
-    if [ $CURL_STATUS -eq 0 ]; then
-        rm -f "$TMP_PDF"
-        SAFE_TITLE=$(echo "$TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
-        printf '{"success":true,"method":"web_interface","title":"%s","message":"Document imported via reMarkable web interface"}\n' "$SAFE_TITLE"
-        return
-    fi
-
-    # Try also 10.11.99.1 in case webserver bound only to usb interface
-    CURL_OUT2=$(curl -s -S -f --connect-timeout 2 --max-time 15 -X POST http://10.11.99.1/upload -F "file=@${TMP_PDF};filename=${FILENAME};type=application/pdf" 2>&1)
-    CURL_STATUS2=$?
-
-    if [ $CURL_STATUS2 -eq 0 ]; then
-        rm -f "$TMP_PDF"
-        SAFE_TITLE=$(echo "$TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
-        printf '{"success":true,"method":"web_interface","title":"%s","message":"Document imported via reMarkable web interface"}\n' "$SAFE_TITLE"
-        return
-    fi
-
-    # Strategy 2: Direct xochitl document creation using UUID
+    # Direct xochitl document creation using UUID
     mkdir -p "$XOCHITL_DIR"
-    
+
     # Generate UUID
     UUID=""
     if [ -f /proc/sys/kernel/random/uuid ]; then
@@ -352,7 +329,7 @@ META_EOF
 CONTENT_EOF
 
     SAFE_TITLE=$(echo "$TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    printf '{"success":true,"method":"direct_xochitl","title":"%s","uuid":"%s","message":"PDF written to xochitl storage. Note: Enable USB web interface in settings or restart xochitl to index"}\n' "$SAFE_TITLE" "$UUID"
+    printf '{"success":true,"method":"direct_xochitl","title":"%s","uuid":"%s","message":"Document imported to storage"}\n' "$SAFE_TITLE" "$UUID"
 }
 
 cmd_load_config() {
@@ -415,28 +392,7 @@ cmd_import_local_pdf() {
         return
     fi
 
-    # Strategy 1: Web interface
-    CURL_OUT=$(curl -s -S -f --connect-timeout 2 --max-time 15 -X POST http://127.0.0.1/upload -F "file=@${TMP_PDF};filename=${FILENAME};type=application/pdf" 2>&1)
-    CURL_STATUS=$?
-
-    if [ $CURL_STATUS -eq 0 ]; then
-        rm -f "$TMP_PDF"
-        SAFE_TITLE=$(echo "$TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
-        printf '{"success":true,"method":"web_interface","title":"%s","message":"Document imported via reMarkable web interface"}\n' "$SAFE_TITLE"
-        return
-    fi
-
-    CURL_OUT2=$(curl -s -S -f --connect-timeout 2 --max-time 15 -X POST http://10.11.99.1/upload -F "file=@${TMP_PDF};filename=${FILENAME};type=application/pdf" 2>&1)
-    CURL_STATUS2=$?
-
-    if [ $CURL_STATUS2 -eq 0 ]; then
-        rm -f "$TMP_PDF"
-        SAFE_TITLE=$(echo "$TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
-        printf '{"success":true,"method":"web_interface","title":"%s","message":"Document imported via reMarkable web interface"}\n' "$SAFE_TITLE"
-        return
-    fi
-
-    # Strategy 2: Direct xochitl document creation
+    # Direct xochitl document creation
     mkdir -p "$XOCHITL_DIR"
 
     UUID=""
