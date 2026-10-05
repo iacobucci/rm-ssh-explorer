@@ -8,21 +8,28 @@ Item {
     property string parentPath: "/"
     property var rawEntries: []
     property bool filterOnlyPdfs: true
+    property bool showHiddenFiles: false
+    property bool isFilterMenuOpen: false
     property bool isLoading: false
     property string errorMessage: ""
+
+    onCurrentPathChanged: {
+        isFilterMenuOpen = false;
+    }
 
     // Computed filtered model
     property var displayEntries: {
         var res = [];
         for (var i = 0; i < rawEntries.length; i++) {
             var item = rawEntries[i];
-            if (filterOnlyPdfs) {
-                if (item.type === "dir" || item.is_pdf) {
-                    res.push(item);
-                }
-            } else {
-                res.push(item);
+            var isHidden = item.name.length > 0 && item.name.charAt(0) === ".";
+            if (!showHiddenFiles && isHidden) {
+                continue;
             }
+            if (filterOnlyPdfs && item.type !== "dir" && !item.is_pdf) {
+                continue;
+            }
+            res.push(item);
         }
         return res;
     }
@@ -50,7 +57,7 @@ Item {
 
                 // Up / Parent Directory Button
                 Rectangle {
-                    width: 110
+                    width: 100
                     height: 48
                     color: (currentPath === "/" || currentPath === parentPath) ? Style.subtleBg : (upMa.pressed ? Style.invertedBg : Style.bg)
                     border.color: (currentPath === "/" || currentPath === parentPath) ? Style.subtleBorder : Style.border
@@ -68,13 +75,16 @@ Item {
                     MouseArea {
                         id: upMa
                         anchors.fill: parent
-                        onClicked: explorerRoot.navigateTo(explorerRoot.parentPath)
+                        onClicked: {
+                            explorerRoot.isFilterMenuOpen = false;
+                            explorerRoot.navigateTo(explorerRoot.parentPath);
+                        }
                     }
                 }
 
                 // Current Path Label Box
                 Rectangle {
-                    width: parent.width - 110 - 100 - 150 - 32
+                    width: parent.width - 100 - 90 - 120 - 40
                     height: 48
                     color: Style.bg
                     border.color: Style.subtleBorder
@@ -117,30 +127,35 @@ Item {
                     MouseArea {
                         id: refMa
                         anchors.fill: parent
-                        onClicked: explorerRoot.refreshRequested()
+                        onClicked: {
+                            explorerRoot.isFilterMenuOpen = false;
+                            explorerRoot.refreshRequested();
+                        }
                     }
                 }
 
-                // Filter Toggle Button
+                // Filters Menu Button
                 Rectangle {
-                    width: 140
+                    width: 120
                     height: 48
-                    color: explorerRoot.filterOnlyPdfs ? Style.invertedBg : (filtMa.pressed ? Style.activeHighlight : Style.bg)
+                    color: (explorerRoot.isFilterMenuOpen || filtMa.pressed) ? Style.invertedBg : ((explorerRoot.filterOnlyPdfs || explorerRoot.showHiddenFiles) ? Style.activeHighlight : Style.bg)
                     border.color: Style.border
                     border.width: 1
                     radius: Style.cornerRadius
 
                     Text {
                         anchors.centerIn: parent
-                        text: explorerRoot.filterOnlyPdfs ? "PDFs Only" : "Show All Files"
+                        text: (explorerRoot.filterOnlyPdfs || explorerRoot.showHiddenFiles) ? "Filters [on]" : "Filters"
                         font.pixelSize: Style.fontSizeSmall
                         font.bold: true
-                        color: explorerRoot.filterOnlyPdfs ? Style.invertedFg : Style.fg
+                        color: (explorerRoot.isFilterMenuOpen || filtMa.pressed) ? Style.invertedFg : Style.fg
                     }
                     MouseArea {
                         id: filtMa
                         anchors.fill: parent
-                        onClicked: explorerRoot.filterOnlyPdfs = !explorerRoot.filterOnlyPdfs
+                        onClicked: {
+                            explorerRoot.isFilterMenuOpen = !explorerRoot.isFilterMenuOpen;
+                        }
                     }
                 }
             }
@@ -238,7 +253,7 @@ Item {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: explorerRoot.filterOnlyPdfs ? "No PDF files found in this folder." : "Folder is empty."
+                    text: (explorerRoot.rawEntries.length > 0) ? "No files match active filters." : "Folder is empty."
                     font.pixelSize: Style.fontSizeTitle
                     color: Style.subtleFg
                 }
@@ -251,7 +266,7 @@ Item {
                     border.color: Style.border
                     border.width: 1
                     radius: Style.cornerRadius
-                    visible: explorerRoot.filterOnlyPdfs
+                    visible: explorerRoot.rawEntries.length > 0 && (explorerRoot.filterOnlyPdfs || !explorerRoot.showHiddenFiles)
 
                     Text {
                         anchors.centerIn: parent
@@ -263,7 +278,10 @@ Item {
                     MouseArea {
                         id: emptyToggleMa
                         anchors.fill: parent
-                        onClicked: explorerRoot.filterOnlyPdfs = false
+                        onClicked: {
+                            explorerRoot.filterOnlyPdfs = false;
+                            explorerRoot.showHiddenFiles = true;
+                        }
                     }
                 }
             }
@@ -361,6 +379,7 @@ Item {
                         id: rowMa
                         anchors.fill: parent
                         onClicked: {
+                            explorerRoot.isFilterMenuOpen = false;
                             if (modelData.type === "dir") {
                                 var target = explorerRoot.currentPath;
                                 if (target === "/") {
@@ -461,6 +480,207 @@ Item {
                                 fileListView.contentY = newY;
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // Dismiss overlay for filter menu
+    MouseArea {
+        anchors.fill: parent
+        visible: explorerRoot.isFilterMenuOpen
+        z: 40
+        onClicked: {
+            explorerRoot.isFilterMenuOpen = false;
+        }
+    }
+
+    // Filter Menu Dropdown Card
+    Rectangle {
+        id: filterMenuCard
+        visible: explorerRoot.isFilterMenuOpen
+        z: 50
+        width: 280
+        anchors.top: parent.top
+        anchors.topMargin: 64
+        anchors.right: parent.right
+        anchors.rightMargin: 8
+        color: Style.bg
+        border.color: Style.border
+        border.width: Style.borderWidth
+        radius: Style.cornerRadius
+
+        Column {
+            width: parent.width
+            spacing: 0
+
+            // Menu Header
+            Rectangle {
+                width: parent.width
+                height: 44
+                color: Style.subtleBg
+                radius: Style.cornerRadius
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Filter Options"
+                    font.pixelSize: Style.fontSizeSmall
+                    font.bold: true
+                    color: Style.fg
+                }
+
+                Rectangle {
+                    width: 32
+                    height: 32
+                    anchors.right: parent.right
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: "transparent"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "X"
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: Style.subtleFg
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: explorerRoot.isFilterMenuOpen = false
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Style.border
+            }
+
+            // Option 1: PDFs Only
+            Rectangle {
+                width: parent.width
+                height: 60
+                color: pdfOptMa.pressed ? Style.activeHighlight : Style.bg
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 14
+                    anchors.rightMargin: 14
+                    spacing: 12
+
+                    Rectangle {
+                        width: 26
+                        height: 26
+                        anchors.verticalCenter: parent.verticalCenter
+                        border.color: Style.border
+                        border.width: 2
+                        radius: 3
+                        color: explorerRoot.filterOnlyPdfs ? Style.invertedBg : Style.bg
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "X"
+                            font.pixelSize: 14
+                            font.bold: true
+                            color: Style.invertedFg
+                            visible: explorerRoot.filterOnlyPdfs
+                        }
+                    }
+
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+
+                        Text {
+                            text: "PDFs Only"
+                            font.pixelSize: Style.fontSizeBody
+                            font.bold: true
+                            color: Style.fg
+                        }
+
+                        Text {
+                            text: "Show only PDF files"
+                            font.pixelSize: 12
+                            color: Style.subtleFg
+                        }
+                    }
+                }
+
+                MouseArea {
+                    id: pdfOptMa
+                    anchors.fill: parent
+                    onClicked: {
+                        explorerRoot.filterOnlyPdfs = !explorerRoot.filterOnlyPdfs;
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Style.subtleBorder
+            }
+
+            // Option 2: Show Hidden Files
+            Rectangle {
+                width: parent.width
+                height: 60
+                color: hiddenOptMa.pressed ? Style.activeHighlight : Style.bg
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 14
+                    anchors.rightMargin: 14
+                    spacing: 12
+
+                    Rectangle {
+                        width: 26
+                        height: 26
+                        anchors.verticalCenter: parent.verticalCenter
+                        border.color: Style.border
+                        border.width: 2
+                        radius: 3
+                        color: explorerRoot.showHiddenFiles ? Style.invertedBg : Style.bg
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "X"
+                            font.pixelSize: 14
+                            font.bold: true
+                            color: Style.invertedFg
+                            visible: explorerRoot.showHiddenFiles
+                        }
+                    }
+
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+
+                        Text {
+                            text: "Hidden Files"
+                            font.pixelSize: Style.fontSizeBody
+                            font.bold: true
+                            color: Style.fg
+                        }
+
+                        Text {
+                            text: "Show dotfiles (.*)"
+                            font.pixelSize: 12
+                            color: Style.subtleFg
+                        }
+                    }
+                }
+
+                MouseArea {
+                    id: hiddenOptMa
+                    anchors.fill: parent
+                    onClicked: {
+                        explorerRoot.showHiddenFiles = !explorerRoot.showHiddenFiles;
                     }
                 }
             }

@@ -126,6 +126,40 @@ Rectangle {
         }
     }
 
+    function deleteProfile(name) {
+        var profiles = configData.profiles || [];
+        var newProfiles = [];
+        for (var i = 0; i < profiles.length; i++) {
+            if (profiles[i].name !== name) {
+                newProfiles.push(profiles[i]);
+            }
+        }
+        if (newProfiles.length === 0) {
+            newProfiles.push({
+                name: "Default",
+                host: "",
+                port: 22,
+                user: "root",
+                key: "/home/root/.ssh/id_dropbear",
+                remotePath: "~"
+            });
+        }
+        configData.profiles = newProfiles;
+        configData.activeProfile = newProfiles[0].name;
+        connectionView.profiles = newProfiles;
+        connectionView.loadProfile(newProfiles[0]);
+
+        var jsonStr = JSON.stringify(configData);
+        var res = runHelper("save-config", [jsonStr]);
+        if (res && res.success) {
+            connectionView.statusMessage = "Profile '" + name + "' deleted successfully";
+            connectionView.testSuccess = true;
+        } else {
+            connectionView.statusMessage = "Failed to delete profile: " + (res ? res.error : "Unknown error");
+            connectionView.testSuccess = false;
+        }
+    }
+
     // Connection & Navigation
     function startBrowse(host, port, user, key, initialPath) {
         activeHost = host;
@@ -370,6 +404,11 @@ Rectangle {
 
             onRequestSaveProfile: (name, h, p, u, k, path) => {
                 appRoot.saveProfile(name, h, p, u, k, path);
+            }
+
+            onRequestDeleteProfile: (name) => {
+                virtualKeyboard.visible = false;
+                appRoot.deleteProfile(name);
             }
 
             onInputFocused: (item) => {

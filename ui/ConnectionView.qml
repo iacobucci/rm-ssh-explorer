@@ -17,9 +17,20 @@ Item {
     property bool isTesting: false
     property bool testSuccess: false
 
+    property bool isCurrentProfileSaved: {
+        if (!profiles) return false;
+        for (var i = 0; i < profiles.length; i++) {
+            if (profiles[i].name === activeProfileName) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     signal requestConnect(string host, int port, string user, string key, string path)
     signal requestTest(string host, int port, string user, string key)
     signal requestSaveProfile(string name, string host, int port, string user, string key, string path)
+    signal requestDeleteProfile(string name)
     signal inputFocused(var item)
 
     function loadProfile(p) {
@@ -77,7 +88,8 @@ Item {
                     color: Style.subtleFg
                 }
 
-                Row {
+                Flow {
+                    width: parent.width
                     spacing: 8
                     Repeater {
                         model: connectionViewRoot.profiles
@@ -374,72 +386,105 @@ Item {
             }
 
             // Action Buttons
-            Row {
+            Column {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 14
+                spacing: 12
 
-                // Test Button
-                Rectangle {
-                    width: 170
-                    height: Style.buttonHeight
-                    color: testMa.pressed ? Style.activeHighlight : Style.bg
-                    border.color: Style.border
-                    border.width: Style.borderWidth
-                    radius: Style.cornerRadius
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 12
 
-                    Text {
-                        anchors.centerIn: parent
-                        text: connectionViewRoot.isTesting ? "Testing..." : "Test Connection"
-                        font.pixelSize: Style.fontSizeBody
-                        font.bold: true
-                        color: Style.fg
-                    }
-                    MouseArea {
-                        id: testMa
-                        anchors.fill: parent
-                        enabled: !connectionViewRoot.isTesting && connectionViewRoot.host !== ""
-                        onClicked: {
-                            connectionViewRoot.requestTest(connectionViewRoot.host, connectionViewRoot.port, connectionViewRoot.user, connectionViewRoot.keyPath);
+                    // Test Button
+                    Rectangle {
+                        width: 170
+                        height: Style.buttonHeight
+                        color: testMa.pressed ? Style.activeHighlight : Style.bg
+                        border.color: Style.border
+                        border.width: Style.borderWidth
+                        radius: Style.cornerRadius
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: connectionViewRoot.isTesting ? "Testing..." : "Test Connection"
+                            font.pixelSize: Style.fontSizeBody
+                            font.bold: true
+                            color: Style.fg
+                        }
+                        MouseArea {
+                            id: testMa
+                            anchors.fill: parent
+                            enabled: !connectionViewRoot.isTesting && connectionViewRoot.host !== ""
+                            onClicked: {
+                                connectionViewRoot.requestTest(connectionViewRoot.host, connectionViewRoot.port, connectionViewRoot.user, connectionViewRoot.keyPath);
+                            }
                         }
                     }
-                }
 
-                // Save Profile Button
-                Rectangle {
-                    width: 150
-                    height: Style.buttonHeight
-                    color: saveMa.pressed ? Style.activeHighlight : Style.bg
-                    border.color: Style.border
-                    border.width: Style.borderWidth
-                    radius: Style.cornerRadius
+                    // Delete Profile Button
+                    Rectangle {
+                        width: 150
+                        height: Style.buttonHeight
+                        color: !connectionViewRoot.isCurrentProfileSaved ? Style.subtleBg : (delMa.pressed ? Style.activeHighlight : Style.bg)
+                        border.color: !connectionViewRoot.isCurrentProfileSaved ? Style.subtleBorder : Style.border
+                        border.width: Style.borderWidth
+                        radius: Style.cornerRadius
+                        opacity: connectionViewRoot.isCurrentProfileSaved ? 1.0 : 0.4
 
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Save Profile"
-                        font.pixelSize: Style.fontSizeBody
-                        font.bold: true
-                        color: Style.fg
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Delete Profile"
+                            font.pixelSize: Style.fontSizeBody
+                            font.bold: true
+                            color: !connectionViewRoot.isCurrentProfileSaved ? Style.subtleFg : Style.fg
+                        }
+                        MouseArea {
+                            id: delMa
+                            anchors.fill: parent
+                            enabled: connectionViewRoot.isCurrentProfileSaved
+                            onClicked: {
+                                deleteModal.visible = true;
+                            }
+                        }
                     }
-                    MouseArea {
-                        id: saveMa
-                        anchors.fill: parent
-                        onClicked: {
-                            connectionViewRoot.requestSaveProfile(
-                                connectionViewRoot.activeProfileName,
-                                connectionViewRoot.host,
-                                connectionViewRoot.port,
-                                connectionViewRoot.user,
-                                connectionViewRoot.keyPath,
-                                connectionViewRoot.remotePath
-                            );
+
+                    // Save Profile Button
+                    Rectangle {
+                        width: 150
+                        height: Style.buttonHeight
+                        color: saveMa.pressed ? Style.activeHighlight : Style.bg
+                        border.color: Style.border
+                        border.width: Style.borderWidth
+                        radius: Style.cornerRadius
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Save Profile"
+                            font.pixelSize: Style.fontSizeBody
+                            font.bold: true
+                            color: Style.fg
+                        }
+                        MouseArea {
+                            id: saveMa
+                            anchors.fill: parent
+                            onClicked: {
+                                connectionViewRoot.requestSaveProfile(
+                                    connectionViewRoot.activeProfileName,
+                                    connectionViewRoot.host,
+                                    connectionViewRoot.port,
+                                    connectionViewRoot.user,
+                                    connectionViewRoot.keyPath,
+                                    connectionViewRoot.remotePath
+                                );
+                            }
                         }
                     }
                 }
 
                 // Connect & Explore Button
                 Rectangle {
-                    width: 230
+                    width: 340
                     height: Style.buttonHeight
+                    anchors.horizontalCenter: parent.horizontalCenter
                     color: connMa.pressed ? Style.bg : Style.invertedBg
                     border.color: Style.border
                     border.width: Style.borderWidth
@@ -470,6 +515,110 @@ Item {
             }
 
             Item { width: 1; height: 20 }
+        }
+    }
+
+    // Delete Confirmation Modal
+    Rectangle {
+        id: deleteModal
+        anchors.fill: parent
+        color: "#80000000"
+        visible: false
+        z: 100
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: deleteModal.visible = false
+        }
+
+        Rectangle {
+            width: Math.min(parent.width - 40, 500)
+            height: 220
+            anchors.centerIn: parent
+            color: Style.bg
+            border.color: Style.border
+            border.width: Style.borderWidth + 1
+            radius: Style.cornerRadius + 2
+
+            MouseArea {
+                // Prevent clicks inside the dialog from closing it
+                anchors.fill: parent
+            }
+
+            Column {
+                anchors.fill: parent
+                anchors.margins: 22
+                spacing: 14
+
+                Text {
+                    text: "Delete Profile"
+                    font.pixelSize: Style.fontSizeTitle
+                    font.bold: true
+                    color: Style.fg
+                }
+
+                Text {
+                    width: parent.width
+                    text: "Are you sure you want to delete profile \"" + connectionViewRoot.activeProfileName + "\"?"
+                    font.pixelSize: Style.fontSizeBody
+                    wrapMode: Text.WordWrap
+                    color: Style.fg
+                }
+
+                Item { width: 1; height: 6 }
+
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 16
+
+                    Rectangle {
+                        width: 140
+                        height: Style.buttonHeight
+                        color: cancelDelMa.pressed ? Style.activeHighlight : Style.bg
+                        border.color: Style.border
+                        border.width: Style.borderWidth
+                        radius: Style.cornerRadius
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Cancel"
+                            font.pixelSize: Style.fontSizeBody
+                            font.bold: true
+                            color: Style.fg
+                        }
+                        MouseArea {
+                            id: cancelDelMa
+                            anchors.fill: parent
+                            onClicked: deleteModal.visible = false
+                        }
+                    }
+
+                    Rectangle {
+                        width: 140
+                        height: Style.buttonHeight
+                        color: confirmDelMa.pressed ? Style.bg : Style.invertedBg
+                        border.color: Style.border
+                        border.width: Style.borderWidth
+                        radius: Style.cornerRadius
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Delete"
+                            font.pixelSize: Style.fontSizeBody
+                            font.bold: true
+                            color: confirmDelMa.pressed ? Style.invertedBg : Style.invertedFg
+                        }
+                        MouseArea {
+                            id: confirmDelMa
+                            anchors.fill: parent
+                            onClicked: {
+                                deleteModal.visible = false;
+                                connectionViewRoot.requestDeleteProfile(connectionViewRoot.activeProfileName);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

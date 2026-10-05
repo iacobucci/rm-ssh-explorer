@@ -14,8 +14,8 @@ Designed specifically for the reMarkable 2 E-Ink Carta display (1404x1872), it r
 
 - **E-Ink Optimized UI:** High-contrast monochrome interface designed for minimal flicker, with dedicated Page Up / Page Down controls.
 - **On-Screen Touch Keyboard:** Integrated virtual keyboard for typing hosts, paths, and credentials directly on the tablet.
-- **Connection Profiles:** Save, manage, and test multiple SSH profiles stored in `~/.config/ssh-explorer/config.json`.
-- **Fast Directory Traversal:** Browse remote folders with toggleable PDF-only filter and human-readable file sizes.
+- **Connection Profiles:** Save, test, and delete multiple SSH profiles stored in `~/.config/ssh-explorer/config.json`.
+- **Fast Directory Traversal & Filters:** Browse remote folders with quick filter toggles for *PDFs Only* and *Hidden Files* (dotfiles), plus human-readable file sizes.
 - **Dual PDF Import Methods:**
   - *Zero-Restart (Primary):* Streams the PDF into the local USB web interface (`http://127.0.0.1/upload`), making files appear instantly in your library.
   - *Direct Storage (Fallback):* Writes UUID metadata directly to xochitl storage, with a 1-tap quick reload button.

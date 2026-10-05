@@ -70,6 +70,8 @@ int main(int argc, char *argv[])
                             QVariantMap f1; f1["name"] = "Remarkable_Manual.pdf"; f1["type"] = "file"; f1["is_pdf"] = true; f1["size"] = 5242880; f1["size_str"] = "5.0 MB"; list.append(f1);
                             QVariantMap f2; f2["name"] = "Research_Paper.pdf"; f2["type"] = "file"; f2["is_pdf"] = true; f2["size"] = 1258291; f2["size_str"] = "1.2 MB"; list.append(f2);
                             QVariantMap f3; f3["name"] = "notes.txt"; f3["type"] = "file"; f3["is_pdf"] = false; f3["size"] = 1024; f3["size_str"] = "1.0 KB"; list.append(f3);
+                            QVariantMap h1; h1["name"] = ".config"; h1["type"] = "dir"; h1["is_pdf"] = false; h1["size"] = 0; h1["size_str"] = ""; list.append(h1);
+                            QVariantMap h2; h2["name"] = ".bashrc"; h2["type"] = "file"; h2["is_pdf"] = false; h2["size"] = 256; h2["size_str"] = "256 B"; list.append(h2);
                             ev->setProperty("rawEntries", list);
                         }
                     }
