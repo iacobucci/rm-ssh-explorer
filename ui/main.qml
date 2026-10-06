@@ -207,6 +207,42 @@ Rectangle {
         }
     }
 
+    function searchDirectory(path, query) {
+        explorerView.isSearching = true;
+        explorerView.isLoading = true;
+        explorerView.errorMessage = "";
+
+        searchTimer.targetPath = path;
+        searchTimer.searchQuery = query;
+        searchTimer.restart();
+    }
+
+    Timer {
+        id: searchTimer
+        property string targetPath: ""
+        property string searchQuery: ""
+        interval: 50
+        repeat: false
+        onTriggered: {
+            var res = appRoot.runHelper("search-dir", [
+                appRoot.activeHost,
+                appRoot.activePort.toString(),
+                appRoot.activeUser,
+                appRoot.activeKey,
+                searchTimer.targetPath,
+                searchTimer.searchQuery
+            ]);
+
+            explorerView.isLoading = false;
+            explorerView.isSearching = false;
+            if (res && res.success) {
+                explorerView.setSearchResults(res.entries || [], searchTimer.searchQuery);
+            } else {
+                explorerView.errorMessage = res ? res.error : "Failed to search remote directory";
+            }
+        }
+    }
+
     // PDF Import Execution
     function executeImport(remoteFilePath, title) {
         importModal.isWorking = true;
@@ -457,7 +493,16 @@ Rectangle {
             }
 
             onRefreshRequested: {
-                appRoot.fetchDirectory(explorerView.currentPath);
+                if (explorerView.isSearchActive && explorerView.searchQuery.length > 0) {
+                    appRoot.searchDirectory(explorerView.currentPath, explorerView.searchQuery);
+                } else {
+                    appRoot.fetchDirectory(explorerView.currentPath);
+                }
+            }
+
+            onSearchRequested: (query) => {
+                virtualKeyboard.visible = false;
+                appRoot.searchDirectory(explorerView.currentPath, query);
             }
 
             onPdfSelected: (path, name, sizeStr, size) => {

@@ -174,17 +174,26 @@ REMOTE_EOF
         # Dirs first
         for (i = 0; i < d_count; i++) {
             n = dirs[i]
+            if (cwd == "/") full_path = "/" n
+            else full_path = cwd "/" n
+
             gsub(/\\/, "\\\\", n)
             gsub(/"/, "\\\"", n)
+            gsub(/\\/, "\\\\", full_path)
+            gsub(/"/, "\\\"", full_path)
+
             if (!first) printf ","
             first = 0
-            printf "{\"name\":\"%s\",\"type\":\"dir\",\"is_pdf\":false,\"size\":0,\"size_str\":\"\"}", n
+            printf "{\"name\":\"%s\",\"path\":\"%s\",\"rel_path\":\"%s\",\"sub_dir\":\"\",\"type\":\"dir\",\"is_pdf\":false,\"size\":0,\"size_str\":\"\"}", n, full_path, n
         }
 
         # Files
         for (i = 0; i < f_count; i++) {
             n = files_name[i]
             sz = files_size[i] + 0
+            if (cwd == "/") full_path = "/" n
+            else full_path = cwd "/" n
+
             is_pdf = (tolower(n) ~ /\.pdf$/) ? "true" : "false"
 
             if (sz >= 1073741824) sz_str = sprintf("%.1f GB", sz / 1073741824)
@@ -194,9 +203,201 @@ REMOTE_EOF
 
             gsub(/\\/, "\\\\", n)
             gsub(/"/, "\\\"", n)
+            gsub(/\\/, "\\\\", full_path)
+            gsub(/"/, "\\\"", full_path)
+
             if (!first) printf ","
             first = 0
-            printf "{\"name\":\"%s\",\"type\":\"file\",\"is_pdf\":%s,\"size\":%d,\"size_str\":\"%s\"}", n, is_pdf, sz, sz_str
+            printf "{\"name\":\"%s\",\"path\":\"%s\",\"rel_path\":\"%s\",\"sub_dir\":\"\",\"type\":\"file\",\"is_pdf\":%s,\"size\":%d,\"size_str\":\"%s\"}", n, full_path, n, is_pdf, sz, sz_str
+        }
+
+        printf "]}\n"
+    }
+    '
+}
+
+cmd_search_dir() {
+    HOST="$1"
+    PORT="$2"
+    USER="$3"
+    KEY="$4"
+    REMOTE_PATH="$5"
+    QUERY="$6"
+
+    if [ -z "$HOST" ]; then
+        printf '{"success":false,"error":"Host is required"}\n'
+        return
+    fi
+
+    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY"
+
+    # Send remote search probe via SSH
+    RAW_OUT=$(run_ssh "sh -s -- \"$REMOTE_PATH\" \"$QUERY\"" << 'REMOTE_SEARCH_EOF' 2>&1
+TARGET="$1"
+QUERY="$2"
+
+if [ "$TARGET" = "~" ] || [ -z "$TARGET" ]; then
+    cd "$HOME" 2>/dev/null || cd /
+else
+    if ! cd "$TARGET" 2>/dev/null; then
+        CD_ERR=$(cd "$TARGET" 2>&1)
+        CLEAN_CD_ERR=$(echo "$CD_ERR" | tr '\n' ' ' | sed 's/.*: //')
+        [ -z "$CLEAN_CD_ERR" ] && CLEAN_CD_ERR="Permission denied or directory unreachable"
+        echo "ERR:Cannot access directory '$TARGET': $CLEAN_CD_ERR"
+        exit 1
+    fi
+fi
+
+CWD=$(pwd -L 2>/dev/null || pwd)
+echo "CWD:$CWD"
+
+if [ -z "$QUERY" ]; then
+    exit 0
+fi
+
+# Detect case-insensitive find option
+INAME_FLAG="-iname"
+if ! find . -maxdepth 0 -iname "." >/dev/null 2>&1; then
+    INAME_FLAG="-name"
+fi
+
+# Construct find search arguments safely with positional parameters (no eval)
+set -- . -mindepth 1
+first=1
+for word in $QUERY; do
+    [ -z "$word" ] && continue
+    if [ $first -eq 1 ]; then
+        set -- "$@" "(" "$INAME_FLAG" "*$word*"
+        first=0
+    else
+        set -- "$@" "-a" "$INAME_FLAG" "*$word*"
+    fi
+done
+
+if [ $first -eq 0 ]; then
+    set -- "$@" ")"
+else
+    set -- "$@" "$INAME_FLAG" "*$QUERY*"
+fi
+
+find "$@" 2>/dev/null | head -n 250 | while IFS= read -r p; do
+    [ -z "$p" ] && continue
+    p="${p#./}"
+    if [ -d "$p" ]; then
+        echo "D:$p"
+    elif [ -f "$p" ]; then
+        sz=$(stat -c %s "$p" 2>/dev/null || stat -f %z "$p" 2>/dev/null || ls -ldn "$p" 2>/dev/null | awk '{print $5}' || echo 0)
+        sz=$(echo "$sz" | tr -d ' ')
+        echo "F:$sz:$p"
+    fi
+done
+REMOTE_SEARCH_EOF
+)
+    STATUS=$?
+
+    if [ $STATUS -ne 0 ] || echo "$RAW_OUT" | grep -q "^ERR:"; then
+        CLEAN_ERR=$(echo "$RAW_OUT" | tr '\n' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g')
+        printf '{"success":false,"error":"%s"}\n' "$CLEAN_ERR"
+        return
+    fi
+
+    # Format into JSON using awk
+    echo "$RAW_OUT" | awk -F: '
+    BEGIN {
+        cwd = "/"
+        d_count = 0
+        f_count = 0
+    }
+    /^CWD:/ {
+        cwd = substr($0, 5)
+        next
+    }
+    /^D:/ {
+        rel = substr($0, 3)
+        dirs[d_count++] = rel
+        next
+    }
+    /^F:/ {
+        size = $2
+        rel = substr($0, length($1) + length($2) + 3)
+        files_name[f_count] = rel
+        files_size[f_count] = size
+        f_count++
+        next
+    }
+    END {
+        parent = cwd
+        sub(/\/[^\/]*$/, "", parent)
+        if (parent == "") parent = "/"
+
+        gsub(/\\/, "\\\\", cwd)
+        gsub(/"/, "\\\"", cwd)
+        gsub(/\\/, "\\\\", parent)
+        gsub(/"/, "\\\"", parent)
+
+        printf "{\"success\":true,\"path\":\"%s\",\"parent\":\"%s\",\"entries\":[", cwd, parent
+        first = 1
+
+        # Dirs first
+        for (i = 0; i < d_count; i++) {
+            rel = dirs[i]
+            n = rel
+            sub(".*/", "", n)
+            sub_dir = ""
+            if (index(rel, "/") > 0) {
+                sub_dir = rel
+                sub(/\/[^\/]*$/, "", sub_dir)
+            }
+            if (cwd == "/") full_path = "/" rel
+            else full_path = cwd "/" rel
+
+            gsub(/\\/, "\\\\", n)
+            gsub(/"/, "\\\"", n)
+            gsub(/\\/, "\\\\", rel)
+            gsub(/"/, "\\\"", rel)
+            gsub(/\\/, "\\\\", sub_dir)
+            gsub(/"/, "\\\"", sub_dir)
+            gsub(/\\/, "\\\\", full_path)
+            gsub(/"/, "\\\"", full_path)
+
+            if (!first) printf ","
+            first = 0
+            printf "{\"name\":\"%s\",\"path\":\"%s\",\"rel_path\":\"%s\",\"sub_dir\":\"%s\",\"type\":\"dir\",\"is_pdf\":false,\"size\":0,\"size_str\":\"\"}", n, full_path, rel, sub_dir
+        }
+
+        # Files
+        for (i = 0; i < f_count; i++) {
+            rel = files_name[i]
+            sz = files_size[i] + 0
+            n = rel
+            sub(".*/", "", n)
+            sub_dir = ""
+            if (index(rel, "/") > 0) {
+                sub_dir = rel
+                sub(/\/[^\/]*$/, "", sub_dir)
+            }
+            if (cwd == "/") full_path = "/" rel
+            else full_path = cwd "/" rel
+
+            is_pdf = (tolower(n) ~ /\.pdf$/) ? "true" : "false"
+
+            if (sz >= 1073741824) sz_str = sprintf("%.1f GB", sz / 1073741824)
+            else if (sz >= 1048576) sz_str = sprintf("%.1f MB", sz / 1048576)
+            else if (sz >= 1024) sz_str = sprintf("%.1f KB", sz / 1024)
+            else sz_str = sprintf("%d B", sz)
+
+            gsub(/\\/, "\\\\", n)
+            gsub(/"/, "\\\"", n)
+            gsub(/\\/, "\\\\", rel)
+            gsub(/"/, "\\\"", rel)
+            gsub(/\\/, "\\\\", sub_dir)
+            gsub(/"/, "\\\"", sub_dir)
+            gsub(/\\/, "\\\\", full_path)
+            gsub(/"/, "\\\"", full_path)
+
+            if (!first) printf ","
+            first = 0
+            printf "{\"name\":\"%s\",\"path\":\"%s\",\"rel_path\":\"%s\",\"sub_dir\":\"%s\",\"type\":\"file\",\"is_pdf\":%s,\"size\":%d,\"size_str\":\"%s\"}", n, full_path, rel, sub_dir, is_pdf, sz, sz_str
         }
 
         printf "]}\n"
@@ -464,6 +665,9 @@ case "$ACTION" in
         ;;
     list-dir)
         cmd_list_dir "$@"
+        ;;
+    search-dir)
+        cmd_search_dir "$@"
         ;;
     import-pdf)
         cmd_import_pdf "$@"

@@ -11,15 +11,38 @@ Item {
     property bool showHiddenFiles: false
     property bool isFilterMenuOpen: false
     property bool isLoading: false
+    property bool isSearching: false
     property string errorMessage: ""
 
     property string searchQuery: ""
+    property bool isSearchActive: false
+    property var searchEntries: []
+
+    function triggerSearch() {
+        var query = searchInput ? searchInput.text.trim() : searchQuery.trim();
+        if (query.length === 0) {
+            clearSearch();
+            return;
+        }
+        searchQuery = query;
+        searchRequested(query);
+    }
 
     function clearSearch() {
         searchQuery = "";
+        isSearchActive = false;
+        searchEntries = [];
         if (searchInput) {
             searchInput.text = "";
         }
+        fileListView.contentY = 0;
+    }
+
+    function setSearchResults(entries, query) {
+        searchEntries = entries || [];
+        isSearchActive = true;
+        searchQuery = query;
+        fileListView.contentY = 0;
     }
 
     onCurrentPathChanged: {
@@ -34,11 +57,16 @@ Item {
     // Computed filtered model
     property var displayEntries: {
         var res = [];
+        var sourceList = isSearchActive ? searchEntries : rawEntries;
+
+        // Fallback for preview/offline mock if search query is set but searchEntries is empty
         var query = searchQuery.trim().toLowerCase();
-        var queryWords = query.length > 0 ? query.split(/\s+/) : [];
-        for (var i = 0; i < rawEntries.length; i++) {
-            var item = rawEntries[i];
-            var isHidden = item.name.length > 0 && item.name.charAt(0) === ".";
+        var queryWords = (!isSearchActive && query.length > 0) ? query.split(/\s+/) : [];
+
+        for (var i = 0; i < sourceList.length; i++) {
+            var item = sourceList[i];
+            var isHidden = (item.name.length > 0 && item.name.charAt(0) === ".") ||
+                           (item.rel_path && item.rel_path.indexOf("/.") !== -1);
             if (!showHiddenFiles && isHidden) {
                 continue;
             }
@@ -46,7 +74,7 @@ Item {
                 continue;
             }
             if (queryWords.length > 0) {
-                var nameLower = item.name.toLowerCase();
+                var nameLower = (item.rel_path ? item.rel_path : item.name).toLowerCase();
                 var allMatch = true;
                 for (var w = 0; w < queryWords.length; w++) {
                     if (nameLower.indexOf(queryWords[w]) === -1) {
@@ -65,6 +93,7 @@ Item {
 
     signal navigateTo(string path)
     signal refreshRequested()
+    signal searchRequested(string query)
     signal pdfSelected(string path, string name, string sizeStr, int size)
     signal inputFocused(var item)
 
@@ -212,7 +241,7 @@ Item {
                 // Search Input Field Box
                 Rectangle {
                     id: searchInputBox
-                    width: parent.width - (clearSearchBtn.visible ? (clearSearchBtn.width + 8) : 0)
+                    width: parent.width - 90 - 8 - (clearSearchBtn.visible ? (clearSearchBtn.width + 8) : 0)
                     height: 44
                     anchors.verticalCenter: parent.verticalCenter
                     color: Style.bg
@@ -254,7 +283,7 @@ Item {
                             id: placeholderText
                             anchors.fill: parent
                             verticalAlignment: Text.AlignVCenter
-                            text: "Filter files by name..."
+                            text: "Search in subdirectories..."
                             font.pixelSize: Style.fontSizeBody
                             color: Style.subtleBorder
                             visible: searchInput.text.length === 0
@@ -262,6 +291,9 @@ Item {
 
                         onTextChanged: {
                             explorerRoot.searchQuery = text;
+                            if (text.length === 0 && explorerRoot.isSearchActive) {
+                                explorerRoot.clearSearch();
+                            }
                         }
 
                         onActiveFocusChanged: {
@@ -273,6 +305,35 @@ Item {
 
                         onAccepted: {
                             searchInput.focus = false;
+                            explorerRoot.triggerSearch();
+                        }
+                    }
+                }
+
+                // Search Action Button
+                Rectangle {
+                    id: searchBtn
+                    width: 90
+                    height: 44
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: searchBtnMa.pressed ? Style.invertedBg : (explorerRoot.isSearchActive ? Style.activeHighlight : Style.bg)
+                    border.color: Style.border
+                    border.width: 1
+                    radius: Style.cornerRadius
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Search"
+                        font.pixelSize: Style.fontSizeSmall
+                        font.bold: true
+                        color: searchBtnMa.pressed ? Style.invertedFg : Style.fg
+                    }
+
+                    MouseArea {
+                        id: searchBtnMa
+                        anchors.fill: parent
+                        onClicked: {
+                            explorerRoot.triggerSearch();
                         }
                     }
                 }
@@ -283,7 +344,7 @@ Item {
                     width: 80
                     height: 44
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: explorerRoot.searchQuery.length > 0
+                    visible: explorerRoot.searchQuery.length > 0 || explorerRoot.isSearchActive
                     color: clearSearchMa.pressed ? Style.invertedBg : Style.bg
                     border.color: Style.border
                     border.width: 1
@@ -338,7 +399,7 @@ Item {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Listing remote directory..."
+                    text: explorerRoot.isSearching ? "Searching subdirectories recursively..." : "Listing remote directory..."
                     font.pixelSize: Style.fontSizeBody
                     font.bold: true
                     color: Style.fg
@@ -401,7 +462,7 @@ Item {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: explorerRoot.searchQuery.trim().length > 0
+                    text: (explorerRoot.isSearchActive || explorerRoot.searchQuery.trim().length > 0)
                           ? "No files match \"" + explorerRoot.searchQuery.trim() + "\""
                           : ((explorerRoot.rawEntries.length > 0) ? "No files match active filters." : "Folder is empty.")
                     font.pixelSize: Style.fontSizeTitle
@@ -416,7 +477,7 @@ Item {
                     border.color: Style.border
                     border.width: 1
                     radius: Style.cornerRadius
-                    visible: explorerRoot.searchQuery.trim().length > 0
+                    visible: explorerRoot.isSearchActive || explorerRoot.searchQuery.trim().length > 0
 
                     Text {
                         anchors.centerIn: parent
@@ -524,8 +585,15 @@ Item {
                             }
 
                             Text {
-                                text: modelData.type === "dir" ? "Folder" : (modelData.size_str !== "" ? modelData.size_str : (modelData.size + " B"))
+                                text: {
+                                    var sizePart = modelData.type === "dir" ? "Folder" : (modelData.size_str !== "" ? modelData.size_str : (modelData.size + " B"));
+                                    if (modelData.sub_dir && modelData.sub_dir.length > 0) {
+                                        return modelData.sub_dir + "  •  " + sizePart;
+                                    }
+                                    return sizePart;
+                                }
                                 font.pixelSize: Style.fontSizeSmall
+                                elide: Text.ElideRight
                                 color: Style.subtleFg
                             }
                         }
@@ -557,20 +625,10 @@ Item {
                         onClicked: {
                             explorerRoot.isFilterMenuOpen = false;
                             if (modelData.type === "dir") {
-                                var target = explorerRoot.currentPath;
-                                if (target === "/") {
-                                    target = "/" + modelData.name;
-                                } else {
-                                    target = target + "/" + modelData.name;
-                                }
+                                var target = modelData.path ? modelData.path : (explorerRoot.currentPath === "/" ? ("/" + modelData.name) : (explorerRoot.currentPath + "/" + modelData.name));
                                 explorerRoot.navigateTo(target);
                             } else if (modelData.is_pdf) {
-                                var fullPath = explorerRoot.currentPath;
-                                if (fullPath === "/") {
-                                    fullPath = "/" + modelData.name;
-                                } else {
-                                    fullPath = fullPath + "/" + modelData.name;
-                                }
+                                var fullPath = modelData.path ? modelData.path : (explorerRoot.currentPath === "/" ? ("/" + modelData.name) : (explorerRoot.currentPath + "/" + modelData.name));
                                 explorerRoot.pdfSelected(fullPath, modelData.name, modelData.size_str, modelData.size);
                             }
                         }
@@ -596,7 +654,9 @@ Item {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: {
-                        if (explorerRoot.searchQuery.trim().length > 0) {
+                        if (explorerRoot.isSearchActive) {
+                            return explorerRoot.displayEntries.length + " results in subdirectories";
+                        } else if (explorerRoot.searchQuery.trim().length > 0) {
                             return explorerRoot.displayEntries.length + " of " + explorerRoot.rawEntries.length + " items";
                         }
                         return explorerRoot.displayEntries.length + " items";

@@ -75,6 +75,31 @@ int main(int argc, char *argv[])
                             ev->setProperty("rawEntries", list);
                             if (screenName == "search") {
                                 ev->setProperty("searchQuery", "manual");
+                                ev->setProperty("isSearchActive", true);
+                                QVariantList sList;
+                                QVariantMap sf1;
+                                sf1["name"] = "Remarkable_Manual.pdf";
+                                sf1["path"] = "/home/valerio/documents/Remarkable_Manual.pdf";
+                                sf1["rel_path"] = "Remarkable_Manual.pdf";
+                                sf1["sub_dir"] = "";
+                                sf1["type"] = "file";
+                                sf1["is_pdf"] = true;
+                                sf1["size"] = 5242880;
+                                sf1["size_str"] = "5.0 MB";
+                                sList.append(sf1);
+
+                                QVariantMap sf2;
+                                sf2["name"] = "Quick_Start_Manual.pdf";
+                                sf2["path"] = "/home/valerio/documents/Ebooks/Hardware/Quick_Start_Manual.pdf";
+                                sf2["rel_path"] = "Ebooks/Hardware/Quick_Start_Manual.pdf";
+                                sf2["sub_dir"] = "Ebooks/Hardware";
+                                sf2["type"] = "file";
+                                sf2["is_pdf"] = true;
+                                sf2["size"] = 2097152;
+                                sf2["size_str"] = "2.0 MB";
+                                sList.append(sf2);
+
+                                ev->setProperty("searchEntries", sList);
                             }
                         }
                     }

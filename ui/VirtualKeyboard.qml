@@ -304,7 +304,12 @@ Rectangle {
                     anchors.fill: parent
                     onClicked: {
                         keyboardRoot.visible = false;
-                        if (targetInput) targetInput.focus = false;
+                        if (targetInput) {
+                            if (typeof targetInput.accepted === "function") {
+                                targetInput.accepted();
+                            }
+                            targetInput.focus = false;
+                        }
                     }
                 }
             }
