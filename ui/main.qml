@@ -452,6 +452,7 @@ Rectangle {
             visible: appRoot.currentMode === "explorer"
 
             onNavigateTo: (path) => {
+                virtualKeyboard.visible = false;
                 appRoot.fetchDirectory(path);
             }
 
@@ -460,12 +461,18 @@ Rectangle {
             }
 
             onPdfSelected: (path, name, sizeStr, size) => {
+                virtualKeyboard.visible = false;
                 importModal.remotePath = path;
                 importModal.fileName = name;
                 importModal.fileSizeStr = sizeStr;
                 importModal.fileSize = size;
                 importModal.reset();
                 importModal.visible = true;
+            }
+
+            onInputFocused: (item) => {
+                virtualKeyboard.targetInput = item;
+                virtualKeyboard.visible = true;
             }
         }
     }

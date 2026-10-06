@@ -13,13 +13,29 @@ Item {
     property bool isLoading: false
     property string errorMessage: ""
 
+    property string searchQuery: ""
+
+    function clearSearch() {
+        searchQuery = "";
+        if (searchInput) {
+            searchInput.text = "";
+        }
+    }
+
     onCurrentPathChanged: {
         isFilterMenuOpen = false;
+        clearSearch();
+    }
+
+    onSearchQueryChanged: {
+        fileListView.contentY = 0;
     }
 
     // Computed filtered model
     property var displayEntries: {
         var res = [];
+        var query = searchQuery.trim().toLowerCase();
+        var queryWords = query.length > 0 ? query.split(/\s+/) : [];
         for (var i = 0; i < rawEntries.length; i++) {
             var item = rawEntries[i];
             var isHidden = item.name.length > 0 && item.name.charAt(0) === ".";
@@ -29,6 +45,19 @@ Item {
             if (filterOnlyPdfs && item.type !== "dir" && !item.is_pdf) {
                 continue;
             }
+            if (queryWords.length > 0) {
+                var nameLower = item.name.toLowerCase();
+                var allMatch = true;
+                for (var w = 0; w < queryWords.length; w++) {
+                    if (nameLower.indexOf(queryWords[w]) === -1) {
+                        allMatch = false;
+                        break;
+                    }
+                }
+                if (!allMatch) {
+                    continue;
+                }
+            }
             res.push(item);
         }
         return res;
@@ -37,6 +66,7 @@ Item {
     signal navigateTo(string path)
     signal refreshRequested()
     signal pdfSelected(string path, string name, string sizeStr, int size)
+    signal inputFocused(var item)
 
     Column {
         anchors.fill: parent
@@ -44,6 +74,7 @@ Item {
 
         // Location & Tool Bar
         Rectangle {
+            id: locationBar
             width: parent.width
             height: 64
             color: Style.subtleBg
@@ -161,10 +192,127 @@ Item {
             }
         }
 
+        // Search Bar
+        Rectangle {
+            id: searchBarContainer
+            width: parent.width
+            height: 52
+            color: Style.subtleBg
+            border.color: Style.subtleBorder
+            border.width: 1
+
+            Row {
+                anchors.fill: parent
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                anchors.topMargin: 4
+                anchors.bottomMargin: 4
+                spacing: 8
+
+                // Search Input Field Box
+                Rectangle {
+                    id: searchInputBox
+                    width: parent.width - (clearSearchBtn.visible ? (clearSearchBtn.width + 8) : 0)
+                    height: 44
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: Style.bg
+                    border.color: searchInput.activeFocus ? Style.border : Style.subtleBorder
+                    border.width: searchInput.activeFocus ? Style.borderWidth : 1
+                    radius: Style.cornerRadius
+
+                    Text {
+                        id: searchIconText
+                        anchors.left: parent.left
+                        anchors.leftMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Search:"
+                        font.pixelSize: Style.fontSizeSmall
+                        font.bold: true
+                        color: searchInput.activeFocus ? Style.fg : Style.subtleFg
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: searchInput.forceActiveFocus()
+                        }
+                    }
+
+                    TextInput {
+                        id: searchInput
+                        anchors.left: searchIconText.right
+                        anchors.leftMargin: 8
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        verticalAlignment: TextInput.AlignVCenter
+                        font.pixelSize: Style.fontSizeBody
+                        color: Style.fg
+                        selectByMouse: true
+                        clip: true
+
+                        Text {
+                            id: placeholderText
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            text: "Filter files by name..."
+                            font.pixelSize: Style.fontSizeBody
+                            color: Style.subtleBorder
+                            visible: searchInput.text.length === 0
+                        }
+
+                        onTextChanged: {
+                            explorerRoot.searchQuery = text;
+                        }
+
+                        onActiveFocusChanged: {
+                            if (activeFocus) {
+                                explorerRoot.isFilterMenuOpen = false;
+                                explorerRoot.inputFocused(searchInput);
+                            }
+                        }
+
+                        onAccepted: {
+                            searchInput.focus = false;
+                        }
+                    }
+                }
+
+                // Clear Search Button
+                Rectangle {
+                    id: clearSearchBtn
+                    width: 80
+                    height: 44
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: explorerRoot.searchQuery.length > 0
+                    color: clearSearchMa.pressed ? Style.invertedBg : Style.bg
+                    border.color: Style.border
+                    border.width: 1
+                    radius: Style.cornerRadius
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Clear"
+                        font.pixelSize: Style.fontSizeSmall
+                        font.bold: true
+                        color: clearSearchMa.pressed ? Style.invertedFg : Style.fg
+                    }
+
+                    MouseArea {
+                        id: clearSearchMa
+                        anchors.fill: parent
+                        onClicked: {
+                            explorerRoot.clearSearch();
+                        }
+                    }
+                }
+            }
+        }
+
         // File List Area
         Item {
+            id: fileListContainer
             width: parent.width
-            height: parent.height - 64 - 56 // account for top bar and footer paging bar
+            height: parent.height - locationBar.height - searchBarContainer.height - footerBar.height
 
             // Loading View
             Column {
@@ -253,9 +401,37 @@ Item {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: (explorerRoot.rawEntries.length > 0) ? "No files match active filters." : "Folder is empty."
+                    text: explorerRoot.searchQuery.trim().length > 0
+                          ? "No files match \"" + explorerRoot.searchQuery.trim() + "\""
+                          : ((explorerRoot.rawEntries.length > 0) ? "No files match active filters." : "Folder is empty.")
                     font.pixelSize: Style.fontSizeTitle
                     color: Style.subtleFg
+                }
+
+                Rectangle {
+                    width: 180
+                    height: 42
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: emptyClearMa.pressed ? Style.activeHighlight : Style.bg
+                    border.color: Style.border
+                    border.width: 1
+                    radius: Style.cornerRadius
+                    visible: explorerRoot.searchQuery.trim().length > 0
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Clear Search"
+                        font.pixelSize: Style.fontSizeSmall
+                        font.bold: true
+                        color: Style.fg
+                    }
+                    MouseArea {
+                        id: emptyClearMa
+                        anchors.fill: parent
+                        onClicked: {
+                            explorerRoot.clearSearch();
+                        }
+                    }
                 }
 
                 Rectangle {
@@ -266,7 +442,7 @@ Item {
                     border.color: Style.border
                     border.width: 1
                     radius: Style.cornerRadius
-                    visible: explorerRoot.rawEntries.length > 0 && (explorerRoot.filterOnlyPdfs || !explorerRoot.showHiddenFiles)
+                    visible: explorerRoot.searchQuery.trim().length === 0 && explorerRoot.rawEntries.length > 0 && (explorerRoot.filterOnlyPdfs || !explorerRoot.showHiddenFiles)
 
                     Text {
                         anchors.centerIn: parent
@@ -405,6 +581,7 @@ Item {
 
         // Footer Bar: E-Ink Paging Controls & Item Count
         Rectangle {
+            id: footerBar
             width: parent.width
             height: 56
             color: Style.subtleBg
@@ -418,7 +595,12 @@ Item {
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: explorerRoot.displayEntries.length + " items"
+                    text: {
+                        if (explorerRoot.searchQuery.trim().length > 0) {
+                            return explorerRoot.displayEntries.length + " of " + explorerRoot.rawEntries.length + " items";
+                        }
+                        return explorerRoot.displayEntries.length + " items";
+                    }
                     font.pixelSize: Style.fontSizeSmall
                     font.bold: true
                     color: Style.subtleFg

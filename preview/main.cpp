@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
                         QMetaObject::invokeMethod(rootObj, "setProperty", Q_ARG(const char*, "currentMode"), Q_ARG(QVariant, "connection"));
                         QObject *vk = rootObj->findChild<QObject*>("virtualKeyboard");
                         if (vk) vk->setProperty("visible", true);
-                    } else if (screenName == "explorer") {
+                    } else if (screenName == "explorer" || screenName == "search") {
                         rootObj->setProperty("currentMode", "explorer");
                         rootObj->setProperty("activeHost", "192.168.1.50");
                         rootObj->setProperty("activeUser", "valerio");
@@ -73,6 +73,9 @@ int main(int argc, char *argv[])
                             QVariantMap h1; h1["name"] = ".config"; h1["type"] = "dir"; h1["is_pdf"] = false; h1["size"] = 0; h1["size_str"] = ""; list.append(h1);
                             QVariantMap h2; h2["name"] = ".bashrc"; h2["type"] = "file"; h2["is_pdf"] = false; h2["size"] = 256; h2["size_str"] = "256 B"; list.append(h2);
                             ev->setProperty("rawEntries", list);
+                            if (screenName == "search") {
+                                ev->setProperty("searchQuery", "manual");
+                            }
                         }
                     }
                 }

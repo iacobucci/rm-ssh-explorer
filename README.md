@@ -15,7 +15,7 @@
 - **E-Ink Optimized UI:** High-contrast monochrome interface designed for minimal flicker, with dedicated Page Up / Page Down controls.
 - **On-Screen Touch Keyboard:** Integrated virtual keyboard for typing hosts, paths, and credentials directly on the tablet.
 - **Connection Profiles:** Save, test, and delete multiple SSH profiles stored in `~/.config/ssh-explorer/config.json`.
-- **Fast Directory Traversal & Filters:** Browse remote folders with quick filter toggles for *PDFs Only* and *Hidden Files* (dotfiles), plus human-readable file sizes.
+- **Fast Directory Traversal & Filters:** Browse remote folders with an integrated real-time search bar, quick filter toggles for *PDFs Only* and *Hidden Files* (dotfiles), plus human-readable file sizes.
 - **Fast PDF Import & Library Refresh:**
   - Downloads and writes PDF documents and metadata directly to reMarkable storage (`~/.local/share/remarkable/xochitl/`).
   - Offers a 1-tap **Restart xochitl now** button upon import to refresh the library immediately, or lets you continue browsing and restart later via the top-bar button.
