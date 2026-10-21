@@ -16,10 +16,11 @@
 - **On-Screen Touch Keyboard:** Integrated virtual keyboard for typing hosts, paths, and credentials directly on the tablet.
 - **Connection Profiles:** Save, test, and delete multiple SSH profiles stored in `~/.config/ssh-explorer/config.json`.
 - **Fast Directory Traversal & Filters:** Browse remote folders with an integrated real-time search bar, quick filter toggles for *PDFs Only* and *Hidden Files* (dotfiles), plus human-readable file sizes.
-- **Smart No-Restart PDF Import (USB Loopback):**
-  - **Live In-Memory Refresh:** Automatically uploads documents through reMarkable's internal web server (`http://10.11.99.1/upload` via local loopback). Documents appear in the `xochitl` library **instantly without restarting the UI** and without closing SSH Explorer!
-  - **Graceful Fallback:** If the internal web server is inactive, it seamlessly falls back to direct storage creation (`~/.local/share/remarkable/xochitl/`) with the 1-tap **Restart xochitl now** option.
-  - **Real-Time Loopback Diagnostics:** Top-bar status badge and Setup panel let you test and activate loopback directly from the tablet.
+- **⚡ Smart No-Restart PDF Import (USB Web Server Loopback):**
+  - **Live Library Refresh:** Uploads documents directly through reMarkable's internal web server (`http://10.11.99.1/upload` via loopback). Documents appear in the `xochitl` library **instantly without restarting the UI** and without closing SSH Explorer!
+  - **Background Worker & Non-Blocking Polling:** Handles large documents (textbooks, manuals, 10–200+ MB) seamlessly in the background without being constrained by GUI thread timeouts.
+  - **Zero-Deadlock Kernel Probe:** Instantly detects web server status via `/proc/net/tcp` without network socket contention.
+  - **Graceful Fallback:** If the internal web server is inactive, it seamlessly falls back to direct storage creation (`~/.local/share/remarkable/xochitl/`) with a 1-tap **Restart xochitl now** option.
 - **Lightweight & Self-Contained:** No Python, Node.js, or heavyweight runtimes required on device. Powered by standard POSIX shell tools, Dropbear, and XOVI's CommandExecutor.
 
 ---
@@ -49,9 +50,9 @@
 │          │     (QML: ConnectionView, ExplorerView,      │       │
 │          │      VirtualKeyboard, ImportModal)           │       │
 │          └──────────────────────┬───────────────────────┘       │
-│                                 │ net.asivery.CommandExecutor   │
+│                                 │ Fast Non-Blocking Polling     │
 │          ┌──────────────────────▼───────────────────────┐       │
-│          │                ssh-helper.sh                 │       │
+│          │     Background Worker (ssh-helper.sh)        │       │
 │          └───────────┬───────────────────┬──────────────┘       │
 │                      │                   │                      │
 │             [Loopback HTTP POST]         │                      │
@@ -69,42 +70,65 @@
 
 ---
 
-## No-Restart Library Refresh (`norestart` Branch)
+## ⚡ No-Restart Library Refresh (Loopback Architecture)
 
-In stock reMarkable OS, writing documents directly to `/home/root/.local/share/remarkable/xochitl/` does not automatically update the on-screen library because `xochitl` does not watch the directory for changes. To refresh the library, users traditionally had to restart the whole `xochitl` service (`systemctl restart xochitl`), which terminates all open apps, causes screen flashing, and takes several seconds.
+In stock reMarkable OS, writing documents directly to storage (`/home/root/.local/share/remarkable/xochitl/`) does not automatically refresh the library because `xochitl` does not watch the directory for changes. Users traditionally had to restart the entire `xochitl` GUI service (`systemctl restart xochitl`), which kills all running applications, flashes the screen, and takes 5–10 seconds.
 
-The `norestart` branch implements a **USB Web Server Loopback** architecture to refresh the library without any restart:
-
-### How it Works:
-1. `xochitl` contains an internal HTTP web server (exposed on port `80` when the USB Web Interface is active).
-2. When a document is uploaded via `POST /upload`, `xochitl` processes the upload directly inside its own memory space and notifies its internal Qt document model.
-3. Instead of requiring a physical computer connected over USB, `ssh-helper.sh` performs an internal loopback request directly from the tablet (`http://10.11.99.1/upload` via `curl`).
-4. The document appears immediately on screen in the user's library without restarting `xochitl` and without closing SSH Explorer!
-
-### Loopback Operating Strategies:
-* **Strategy 1: Active USB Connection:** If the tablet is connected to a PC via USB and the Web Interface is toggled ON, loopback works out of the box with zero setup.
-* **Strategy 2: Standalone Wi-Fi with `webinterface-onboot`:** With community utilities like `webinterface-onboot` or `webinterface-wifi` installed from Toltec, the internal web server runs persistently in the background. SSH Explorer automatically uses it over Wi-Fi without needing a USB cable.
-* **Strategy 3: Non-Destructive Loopback Setup:** `ssh-helper.sh` automatically binds `10.11.99.1/32` to the `lo` loopback interface and sets `WebInterfaceEnabled=true` in `xochitl.conf`.
-* **Strategy 4: Graceful Fallback:** If port 80 is not listening, SSH Explorer automatically falls back to direct storage creation and provides the classic 1-tap restart button.
-
-### Testing & Diagnostic Tools:
-* **In the UI:** Tap **Test Loopback** or **Setup Loopback** in the *SSH Connection Setup* view, or watch the status badge in the top bar (`[⚡ No-Restart]` vs `[Direct-Write]`).
-* **From the CLI:**
-  ```bash
-  # Check web server status and network interfaces
-  ./ssh-helper.sh test-loopback
-
-  # Prepare loopback alias and xochitl.conf
-  ./ssh-helper.sh enable-loopback
-
-  # Test upload a local PDF file
-  ./ssh-helper.sh upload-loopback /path/to/test.pdf "Test Title"
-
-  # Run the full diagnostic & experiment suite
-  ./tools/loopback-experiment.sh --full
-  ```
+SSH Explorer solves this by performing an internal **loopback upload**:
+1. When a PDF is downloaded, the background worker sends a `POST /upload` request to `http://10.11.99.1/upload`.
+2. `xochitl`'s embedded web server ingests the document directly inside its own process memory, updates its Qt document models, renders thumbnails, and displays the document live in your library in under 1 second.
+3. The UI smoothly displays real-time progress (*Downloading...* $\rightarrow$ *Ingesting...* $\rightarrow$ *Live in Library!*).
 
 ---
+
+## Enabling No-Restart Mode on Wi-Fi
+
+`xochitl`'s built-in web server normally listens on `10.11.99.1:80` only when a physical USB-C cable is connected. To keep it accessible permanently over Wi-Fi, choose one of the following methods:
+
+### Method 1: Using `webinterface-onboot` (Recommended)
+
+[`webinterface-onboot`](https://github.com/rM-self-serve/webinterface-onboot) is the community standard tool to keep the web server running on boot.
+
+#### Option A: Via Toltec (if installed on device)
+```bash
+opkg update
+opkg install webinterface-onboot
+systemctl enable --now webinterface-onboot
+```
+
+#### Option B: Offline / Bundled Backup (Included in this repo)
+A complete offline backup of `webinterface-onboot` is provided in [`tools/webinterface-onboot/`](file:///home/valerio/source/remarkable/ssh-explorer/tools/webinterface-onboot/):
+```bash
+# Copy and install from repository
+scp tools/webinterface-onboot/webinterface-onboot root@remarkable:/home/root/.local/bin/
+scp tools/webinterface-onboot/webinterface-onboot.service root@remarkable:/lib/systemd/system/
+
+ssh root@remarkable "chmod +x /home/root/.local/bin/webinterface-onboot"
+ssh root@remarkable "/home/root/.local/bin/webinterface-onboot apply-hack -y"
+ssh root@remarkable "/home/root/.local/bin/webinterface-onboot apply-prstip -y"
+ssh root@remarkable "systemctl daemon-reload && systemctl enable --now webinterface-onboot"
+ssh root@remarkable "systemctl restart xochitl"
+```
+*(For detailed documentation and rollback instructions, see [tools/webinterface-onboot/README.md](file:///home/valerio/source/remarkable/ssh-explorer/tools/webinterface-onboot/README.md)).*
+
+---
+
+### Method 2: Standalone ARM Binary Patcher (No external dependencies)
+
+If you prefer not to install system services, this repository includes a standalone ARMv7 patcher that modifies the carrier check instruction in `xochitl`:
+```bash
+# Apply patch on device with automatic backup
+./tools/toggle-webinterface-patch.sh patch
+
+# Revert to 100% stock at any time
+./tools/toggle-webinterface-patch.sh restore
+```
+
+---
+
+### Method 3: Active USB Cable (Zero modifications)
+
+If you connect your reMarkable to a PC via USB-C cable and toggle **Settings $\rightarrow$ Storage $\rightarrow$ USB web interface ON**, loopback works out of the box with zero modifications.
 
 ---
 
@@ -125,26 +149,16 @@ Over USB (default IP `10.11.99.1`):
 ./deploy.sh
 ```
 
-Or specify a Wi-Fi IP address:
+Or specify a Wi-Fi IP address or hostname:
 ```bash
-./deploy.sh 192.168.1.150
+./deploy.sh remarkable
 ```
 
 ### 3. Launch
 
 1. Open the **AppLoad** launcher on your reMarkable tablet.
-2. Tap **SSH Explorer** to launch full screen (or long-press to window).
-
----
-
-## PC Desktop Preview
-
-Test the interface locally on Linux with the tablet's native resolution:
-```bash
-cd preview
-qmake && make
-./preview-app
-```
+2. Tap **SSH Explorer** to launch.
+3. The top bar shows **`[⚡ No-Restart]`** when the loopback web server is active.
 
 ---
 
@@ -152,21 +166,30 @@ qmake && make
 
 ```
 ssh-explorer/
-├── manifest.json              # AppLoad descriptor
-├── application.qrc            # Qt resource descriptor
-├── icon.png                   # Launcher icon (200x200)
-├── ssh-helper.sh              # POSIX backend helper for SSH commands & import
-├── build.sh                   # Build & packaging script
-├── deploy.sh                  # One-step SSH deployment script
+├── manifest.json                        # AppLoad descriptor
+├── application.qrc                      # Qt resource compiler descriptor
+├── icon.png                             # Launcher icon (200x200)
+├── ssh-helper.sh                        # POSIX backend helper (SSH transfer, loopback, config)
+├── build.sh                             # Build & packaging script
+├── deploy.sh                            # One-step SSH deployment script
 ├── res/
-│   └── screenshot.webp        # Application screenshot
+│   └── screenshot.webp                  # Application screenshot
+├── tools/
+│   ├── webinterface-onboot/             # Bundled upstream webinterface-onboot backup & guide
+│   │   ├── README.md                    # Installation & rollback guide
+│   │   ├── webinterface-onboot          # Upstream executable script
+│   │   ├── webinterface-onboot.service  # Systemd service unit
+│   │   └── install-webint-ob.sh         # Upstream installer script
+│   ├── arm_patcher                      # Standalone ARMv7 binary patcher
+│   ├── toggle-webinterface-patch.sh     # Safe binary patch toggler with backup/restore
+│   └── loopback-experiment.sh           # Diagnostic & benchmarking tool
 ├── ui/
-│   ├── main.qml               # App root, state coordinator & top bar
-│   ├── Style.qml              # E-Ink palette, metrics, and typography
-│   ├── qmldir                 # QML module definition
-│   ├── ConnectionView.qml     # Profile manager & connection form
-│   ├── ExplorerView.qml       # Remote file browser & pagination
-│   ├── VirtualKeyboard.qml    # On-screen touch keyboard
-│   └── ImportModal.qml        # Download progress & import confirmation modal
-└── preview/                   # Linux desktop Qt5 test runner
+│   ├── main.qml                         # App root, async background jobs & top bar
+│   ├── Style.qml                        # E-Ink palette, metrics, and typography
+│   ├── qmldir                           # QML module definition
+│   ├── ConnectionView.qml               # Profile manager & connection form
+│   ├── ExplorerView.qml                 # Remote file browser & pagination
+│   ├── VirtualKeyboard.qml              # On-screen touch keyboard
+│   └── ImportModal.qml                  # Download progress & import confirmation modal
+└── preview/                             # Linux desktop Qt5 test runner
 ```
