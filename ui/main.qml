@@ -260,37 +260,38 @@ Rectangle {
         }
     }
 
-    // PDF Import Execution (Asynchronous to avoid deadlocking xochitl's main event loop during loopback upload)
-    AsyncCommandExecutor {
-        id: asyncImportExecutor
-        command: "/bin/sh"
-        property string accumulatedStdout: ""
-        property string accumulatedStderr: ""
+    // PDF Import Execution
+    function executeImport(remoteFilePath, title) {
+        importModal.isWorking = true;
+        importModal.statusText = "Downloading and importing PDF...";
 
-        onStdOutAvailable: (text) => {
-            accumulatedStdout += text + "\n";
-        }
+        importTimer.remotePath = remoteFilePath;
+        importTimer.docTitle = title;
+        importTimer.restart();
+    }
 
-        onStdErrAvailable: (text) => {
-            accumulatedStderr += text + "\n";
-        }
+    function restartXochitl() {
+        runHelper("restart-xochitl", []);
+        appRoot.close();
+    }
 
-        onFinished: (code, status) => {
+    Timer {
+        id: importTimer
+        property string remotePath: ""
+        property string docTitle: ""
+        interval: 50
+        repeat: false
+        onTriggered: {
+            var res = appRoot.runHelper("import-pdf", [
+                appRoot.activeHost,
+                appRoot.activePort.toString(),
+                appRoot.activeUser,
+                appRoot.activeKey,
+                importTimer.remotePath,
+                importTimer.docTitle
+            ]);
+
             importModal.isWorking = false;
-            var stdoutStr = accumulatedStdout.trim();
-            var res = null;
-            if (stdoutStr.length > 0) {
-                var firstBrace = stdoutStr.indexOf("{");
-                var lastBrace = stdoutStr.lastIndexOf("}");
-                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
-                    try {
-                        res = JSON.parse(stdoutStr.substring(firstBrace, lastBrace + 1));
-                    } catch (e) {
-                        res = null;
-                    }
-                }
-            }
-
             if (res && res.success) {
                 importModal.isSuccess = true;
                 importModal.importMethod = res.method || "";
@@ -298,34 +299,9 @@ Rectangle {
                 importModal.statusText = res.message || "Import completed successfully.";
             } else {
                 importModal.isError = true;
-                var err = (res && res.error) ? res.error : (accumulatedStderr.trim() || stdoutStr || "Import failed.");
-                importModal.errorMessage = err;
+                importModal.errorMessage = res ? res.error : "Import failed.";
             }
         }
-    }
-
-    function executeImport(remoteFilePath, title) {
-        importModal.isWorking = true;
-        importModal.statusText = "Downloading and importing PDF...";
-
-        asyncImportExecutor.accumulatedStdout = "";
-        asyncImportExecutor.accumulatedStderr = "";
-        asyncImportExecutor.arguments = [
-            "/home/root/xovi/exthome/appload/ssh-explorer/ssh-helper.sh",
-            "import-pdf",
-            appRoot.activeHost,
-            appRoot.activePort.toString(),
-            appRoot.activeUser,
-            appRoot.activeKey,
-            remoteFilePath,
-            title
-        ];
-        asyncImportExecutor.startCommand(120000);
-    }
-
-    function restartXochitl() {
-        runHelper("restart-xochitl", []);
-        appRoot.close();
     }
 
     Timer {
