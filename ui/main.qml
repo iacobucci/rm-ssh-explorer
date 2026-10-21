@@ -356,10 +356,17 @@ Rectangle {
                 Text {
                     id: loopbackBadgeText
                     anchors.centerIn: parent
-                    text: appRoot.isLoopbackReady ? "No-Restart" : "Direct-Write"
+                    text: appRoot.isLoopbackReady ? "⚡ No-Restart" : "Direct-Write"
                     font.pixelSize: Style.fontSizeSmall
                     font.bold: true
                     color: appRoot.isLoopbackReady ? Style.fg : "#888888"
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        appRoot.checkLoopbackStatus();
+                    }
                 }
             }
         }
@@ -569,6 +576,7 @@ Rectangle {
                 importModal.fileName = name;
                 importModal.fileSizeStr = sizeStr;
                 importModal.fileSize = size;
+                importModal.isLoopbackReady = appRoot.isLoopbackReady;
                 importModal.reset();
                 importModal.visible = true;
             }
@@ -594,6 +602,7 @@ Rectangle {
         id: importModal
         visible: false
         z: 40
+        isLoopbackReady: appRoot.isLoopbackReady
 
         onRequestImport: (path, title) => {
             appRoot.executeImport(path, title);

@@ -528,7 +528,8 @@ upload_via_web_loopback() {
     fi
 
     # Sanitize title for filename used by xochitl as visible title
-    SAFE_NAME=$(echo "$DOC_TITLE" | sed 's/[^a-zA-Z0-9._ -]/_/g')
+    CLEAN_TITLE=$(echo "$DOC_TITLE" | sed 's/\.[pP][dD][fF]$//')
+    SAFE_NAME=$(echo "$CLEAN_TITLE" | sed 's/[^a-zA-Z0-9._ -]/_/g')
     [ -z "$SAFE_NAME" ] && SAFE_NAME="document"
     SAFE_NAME="$SAFE_NAME.pdf"
 

@@ -19,6 +19,7 @@ Rectangle {
     property string importMethod: ""
     property string errorMessage: ""
     property bool noRestart: false
+    property bool isLoopbackReady: false
 
     signal requestImport(string path, string title)
     signal requestRestartXochitl()
@@ -49,7 +50,7 @@ Rectangle {
     Rectangle {
         id: dialogBox
         width: Math.min(modalRoot.width - 40, 680)
-        height: Math.min(modalRoot.height - 40, 520)
+        height: Math.min(modalRoot.height - 40, 560)
         anchors.centerIn: parent
         color: Style.bg
         border.color: Style.border
@@ -118,7 +119,7 @@ Rectangle {
                 // File Info Card
                 Rectangle {
                     width: parent.width
-                    height: 90
+                    height: 120
                     color: Style.subtleBg
                     border.color: Style.subtleBorder
                     border.width: 1
@@ -144,12 +145,35 @@ Rectangle {
                             color: Style.subtleFg
                         }
 
-                        Text {
+                        Row {
                             width: parent.width
-                            text: "Path: " + modalRoot.remotePath
-                            font.pixelSize: Style.fontSizeSmall
-                            elide: Text.ElideMiddle
-                            color: Style.subtleFg
+                            spacing: 8
+
+                            Rectangle {
+                                height: 22
+                                width: modeBadgeText.width + 12
+                                radius: 3
+                                color: modalRoot.isLoopbackReady ? Style.invertedBg : Style.subtleBorder
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                Text {
+                                    id: modeBadgeText
+                                    anchors.centerIn: parent
+                                    text: modalRoot.isLoopbackReady ? "⚡ No-Restart Mode" : "Direct Storage Write"
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                    color: modalRoot.isLoopbackReady ? Style.invertedFg : Style.fg
+                                }
+                            }
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modalRoot.isLoopbackReady ?
+                                      "Document will appear live in library without restart." :
+                                      "Will require a quick xochitl restart to refresh."
+                                font.pixelSize: Style.fontSizeSmall - 1
+                                color: Style.subtleFg
+                            }
                         }
                     }
                 }
@@ -397,6 +421,30 @@ Rectangle {
                             anchors.fill: parent
                             onClicked: modalRoot.requestClose()
                         }
+                    }
+                }
+
+                // Fallback option to restart xochitl if user wants a clean reload anyway
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 220
+                    height: 36
+                    color: restartFallbackMa.pressed ? Style.activeHighlight : Style.bg
+                    border.color: Style.subtleBorder
+                    border.width: 1
+                    radius: Style.cornerRadius
+                    visible: modalRoot.noRestart
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Restart xochitl anyway"
+                        font.pixelSize: Style.fontSizeSmall
+                        color: Style.subtleFg
+                    }
+                    MouseArea {
+                        id: restartFallbackMa
+                        anchors.fill: parent
+                        onClicked: modalRoot.requestRestartXochitl()
                     }
                 }
             }

@@ -37,7 +37,7 @@ echo "Copying application files..."
 scp -o StrictHostKeyChecking=no -r dist/ssh-explorer/* "$REMOTE_USER@$DEVICE_IP:$REMOTE_DEST/"
 
 echo "Setting permissions..."
-ssh -o StrictHostKeyChecking=no "$REMOTE_USER@$DEVICE_IP" "chmod +x $REMOTE_DEST/ssh-helper.sh $REMOTE_DEST/tools/*.sh 2>/dev/null || true"
+ssh -o StrictHostKeyChecking=no "$REMOTE_USER@$DEVICE_IP" "chmod +x $REMOTE_DEST/ssh-helper.sh $REMOTE_DEST/tools/* 2>/dev/null || true"
 
 echo ""
 echo "=== Deployment Successful! ==="
