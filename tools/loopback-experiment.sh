@@ -44,8 +44,10 @@ check_device() {
         warn "Not running on official reMarkable OS (/etc/version not found)"
     fi
 
-    if pgrep -x xochitl >/dev/null 2>&1; then
-        success "xochitl process is running (PID: $(pgrep -x xochitl | tr '\n' ' '))"
+    if pidof xochitl >/dev/null 2>&1; then
+        success "xochitl process is running (PID: $(pidof xochitl))"
+    elif pgrep -f xochitl >/dev/null 2>&1; then
+        success "xochitl process is running (PID: $(pgrep -f xochitl | tr '\n' ' '))"
     else
         warn "xochitl process is not currently running"
     fi
@@ -62,7 +64,7 @@ check_network() {
 
     info "Listing active IP addresses:"
     if command -v ip >/dev/null 2>&1; then
-        ip -br addr show || ip addr show
+        ip addr show
     else
         ifconfig -a
     fi
