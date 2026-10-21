@@ -415,12 +415,12 @@ probe_web_server() {
 
     # Check candidates: optional LOOPBACK_HOST override, then 10.11.99.1, then 127.0.0.1, then localhost
     for CANDIDATE in ${LOOPBACK_HOST:+"$LOOPBACK_HOST"} "10.11.99.1" "127.0.0.1" "localhost"; do
-        STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 1 "http://$CANDIDATE/" 2>/dev/null || echo "000")
+        STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 2 "http://$CANDIDATE/" 2>/dev/null || true)
         if [ "$STATUS_CODE" = "200" ] || [ "$STATUS_CODE" = "301" ] || [ "$STATUS_CODE" = "302" ]; then
             echo "$CANDIDATE"
             return 0
         fi
-        STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 1 "http://$CANDIDATE/documents/" 2>/dev/null || echo "000")
+        STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 2 "http://$CANDIDATE/documents/" 2>/dev/null || true)
         if [ "$STATUS_CODE" = "200" ]; then
             echo "$CANDIDATE"
             return 0

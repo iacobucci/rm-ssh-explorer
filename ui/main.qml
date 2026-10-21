@@ -28,10 +28,15 @@ Rectangle {
     property string loopbackHost: ""
 
     function checkLoopbackStatus() {
+        console.log("[SSH Explorer] Calling checkLoopbackStatus()...");
         var res = runHelper("test-loopback", []);
+        console.log("[SSH Explorer] test-loopback result: " + JSON.stringify(res));
         if (res && res.success) {
             isLoopbackReady = !!res.webServerActive;
             loopbackHost = res.listeningHost || "";
+            console.log("[SSH Explorer] isLoopbackReady is now: " + isLoopbackReady);
+        } else {
+            console.log("[SSH Explorer] checkLoopbackStatus failed: " + (res ? res.error : "null"));
         }
     }
 
@@ -299,9 +304,32 @@ Rectangle {
         }
     }
 
+    Timer {
+        id: loopbackTimer
+        interval: 250
+        repeat: false
+        onTriggered: {
+            checkLoopbackStatus();
+            if (!isLoopbackReady) {
+                retryLoopbackTimer.start();
+            }
+        }
+    }
+
+    Timer {
+        id: retryLoopbackTimer
+        interval: 1500
+        repeat: false
+        onTriggered: {
+            if (!isLoopbackReady) {
+                checkLoopbackStatus();
+            }
+        }
+    }
+
     Component.onCompleted: {
         loadConfig();
-        checkLoopbackStatus();
+        loopbackTimer.start();
     }
 
     // Top Navigation Header
