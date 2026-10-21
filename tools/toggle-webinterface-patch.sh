@@ -48,10 +48,22 @@ apply_patch() {
         cp -p "$XOCHITL_BIN" "$BACKUP_BIN"
     fi
 
+    echo "Stopping xochitl temporarily..."
+    systemctl stop xochitl 2>/dev/null || true
+
     echo "Applying carrier bypass patch..."
-    # Replace byte 0x1a with 0xea at offset 0x32688f (OFFSET + 3)
-    PATCH_OFFSET=$((OFFSET + 3))
-    printf '\xEA' | dd of="$XOCHITL_BIN" bs=1 seek=$PATCH_OFFSET count=1 conv=notrunc 2>/dev/null
+    PATCHER_BIN="$(dirname "$0")/arm_patcher"
+    if [ ! -x "$PATCHER_BIN" ]; then
+        PATCHER_BIN="/tmp/arm_patcher"
+    fi
+
+    if [ -x "$PATCHER_BIN" ]; then
+        "$PATCHER_BIN" "$XOCHITL_BIN"
+    else
+        echo "Error: arm_patcher not found at $PATCHER_BIN"
+        systemctl start xochitl
+        exit 1
+    fi
 
     # Ensure 10.11.99.1 is configured on usb0 or lo
     if command -v ip >/dev/null 2>&1; then
@@ -60,9 +72,8 @@ apply_patch() {
         fi
     fi
 
-    echo "Patch applied successfully!"
-    echo "Restarting xochitl once to load the patched web interface..."
-    systemctl restart xochitl
+    echo "Starting xochitl..."
+    systemctl start xochitl
     sleep 3
 
     echo "Checking port 80 status:"
@@ -79,9 +90,12 @@ restore_stock() {
         echo "Backup $BACKUP_BIN not found!"
         exit 1
     fi
+    echo "Stopping xochitl temporarily..."
+    systemctl stop xochitl 2>/dev/null || true
     echo "Restoring stock binary from $BACKUP_BIN..."
     cp -p "$BACKUP_BIN" "$XOCHITL_BIN"
-    systemctl restart xochitl
+    echo "Starting stock xochitl..."
+    systemctl start xochitl
     echo "Restored stock xochitl and restarted service."
 }
 
