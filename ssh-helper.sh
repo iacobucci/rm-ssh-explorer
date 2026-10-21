@@ -649,6 +649,129 @@ REMOTE_CAT_EOF
     import_direct_xochitl "$TMP_PDF" "$TITLE"
 }
 
+# Background worker for asynchronous PDF download & import
+worker_import() {
+    JOB_ID="$1"
+    HOST="$2"
+    PORT="$3"
+    USER="$4"
+    KEY="$5"
+    REMOTE_PATH="$6"
+    TITLE="$7"
+    STATUS_FILE="/tmp/ssh_job_${JOB_ID}.json"
+
+    write_status() {
+        TMP_STATUS="${STATUS_FILE}.tmp"
+        printf '%s\n' "$1" > "$TMP_STATUS"
+        mv "$TMP_STATUS" "$STATUS_FILE"
+    }
+
+    FILENAME=$(basename "$REMOTE_PATH")
+    if [ -z "$TITLE" ]; then
+        TITLE="$FILENAME"
+        TITLE=$(echo "$TITLE" | sed 's/\.[pP][dD][fF]$//')
+    fi
+    SAFE_TITLE=$(echo "$TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY"
+
+    TMP_PDF="/tmp/ssh_import_${JOB_ID}.pdf"
+    TMP_ERR="/tmp/ssh_import_${JOB_ID}.err"
+    rm -f "$TMP_PDF" "$TMP_ERR"
+
+    write_status '{"status":"downloading","message":"Downloading file over SSH..."}'
+
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 300 "$SSH_BIN" $SSH_ARGS "$SSH_TARGET" "sh -s -- \"$REMOTE_PATH\"" << 'REMOTE_CAT_EOF' > "$TMP_PDF" 2> "$TMP_ERR"
+TARGET="$1"
+if [ ! -f "$TARGET" ] && [ ! -r "$TARGET" ]; then
+    echo "Cannot read remote file: $TARGET" >&2
+    exit 1
+fi
+exec cat "$TARGET"
+REMOTE_CAT_EOF
+        STATUS=$?
+    else
+        "$SSH_BIN" $SSH_ARGS "$SSH_TARGET" "sh -s -- \"$REMOTE_PATH\"" << 'REMOTE_CAT_EOF' > "$TMP_PDF" 2> "$TMP_ERR"
+TARGET="$1"
+if [ ! -f "$TARGET" ] && [ ! -r "$TARGET" ]; then
+    echo "Cannot read remote file: $TARGET" >&2
+    exit 1
+fi
+exec cat "$TARGET"
+REMOTE_CAT_EOF
+        STATUS=$?
+    fi
+
+    if [ $STATUS -ne 0 ] || [ ! -s "$TMP_PDF" ]; then
+        ERR_MSG="Failed to download file from remote host"
+        if [ -s "$TMP_ERR" ]; then
+            ERR_MSG=$(head -n 2 "$TMP_ERR" | tr '\n' ' ')
+        fi
+        rm -f "$TMP_PDF" "$TMP_ERR"
+        CLEAN_ERR=$(echo "$ERR_MSG" | tr '\n' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g')
+        write_status "{\"status\":\"failed\",\"error\":\"$CLEAN_ERR\"}"
+        return
+    fi
+    rm -f "$TMP_ERR"
+
+    HEADER=$(dd if="$TMP_PDF" bs=4 count=1 2>/dev/null || true)
+    if [ "$HEADER" != "%PDF" ] && ! head -n 3 "$TMP_PDF" 2>/dev/null | grep -q "%PDF"; then
+        rm -f "$TMP_PDF"
+        write_status '{"status":"failed","error":"Downloaded file is not a valid PDF (missing %PDF header)"}'
+        return
+    fi
+
+    write_status '{"status":"importing","message":"Ingesting into library (no restart)..."}'
+
+    # Attempt 1: Upload via internal USB web interface loopback
+    if upload_via_web_loopback "$TMP_PDF" "$TITLE"; then
+        rm -f "$TMP_PDF"
+        write_status "{\"status\":\"completed\",\"success\":true,\"method\":\"web_loopback\",\"norestart\":true,\"title\":\"$SAFE_TITLE\",\"message\":\"Document imported live into library via internal server (no restart required)!\"}"
+        return
+    fi
+
+    # Attempt 2: Fallback to direct storage creation
+    import_direct_xochitl "$TMP_PDF" "$TITLE" >/dev/null 2>&1
+    rm -f "$TMP_PDF"
+    write_status "{\"status\":\"completed\",\"success\":true,\"method\":\"direct_xochitl\",\"norestart\":false,\"title\":\"$SAFE_TITLE\",\"message\":\"Document imported to storage (restart required to display)\"}"
+}
+
+cmd_start_import() {
+    JOB_ID="$1"
+    HOST="$2"
+    PORT="$3"
+    USER="$4"
+    KEY="$5"
+    REMOTE_PATH="$6"
+    TITLE="$7"
+
+    if [ -z "$JOB_ID" ] || [ -z "$HOST" ] || [ -z "$REMOTE_PATH" ]; then
+        printf '{"success":false,"error":"Host and remote file path are required"}\n'
+        return
+    fi
+
+    STATUS_FILE="/tmp/ssh_job_${JOB_ID}.json"
+    rm -f "$STATUS_FILE"
+    printf '{"status":"starting","message":"Starting import..."}\n' > "$STATUS_FILE"
+
+    (
+        worker_import "$JOB_ID" "$HOST" "$PORT" "$USER" "$KEY" "$REMOTE_PATH" "$TITLE"
+    ) >/dev/null 2>&1 &
+
+    printf '{"success":true,"jobId":"%s"}\n' "$JOB_ID"
+}
+
+cmd_poll_import() {
+    JOB_ID="$1"
+    STATUS_FILE="/tmp/ssh_job_${JOB_ID}.json"
+    if [ -f "$STATUS_FILE" ]; then
+        cat "$STATUS_FILE"
+    else
+        printf '{"status":"unknown","error":"Job status not found"}\n'
+    fi
+}
+
 cmd_load_config() {
     if [ -f "$CONFIG_FILE" ]; then
         cat "$CONFIG_FILE"
@@ -850,6 +973,12 @@ case "$ACTION" in
         ;;
     search-dir)
         cmd_search_dir "$@"
+        ;;
+    start-import)
+        cmd_start_import "$@"
+        ;;
+    poll-import)
+        cmd_poll_import "$@"
         ;;
     import-pdf)
         cmd_import_pdf "$@"

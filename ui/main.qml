@@ -260,48 +260,72 @@ Rectangle {
         }
     }
 
-    // PDF Import Execution
+    // PDF Import Execution via Background Worker + Fast Non-blocking Status Polling
     function executeImport(remoteFilePath, title) {
         importModal.isWorking = true;
-        importModal.statusText = "Downloading and importing PDF...";
+        importModal.statusText = "Starting download...";
 
-        importTimer.remotePath = remoteFilePath;
-        importTimer.docTitle = title;
-        importTimer.restart();
+        var jobId = Date.now().toString();
+        var res = appRoot.runHelper("start-import", [
+            jobId,
+            appRoot.activeHost,
+            appRoot.activePort.toString(),
+            appRoot.activeUser,
+            appRoot.activeKey,
+            remoteFilePath,
+            title
+        ]);
+
+        if (res && res.success) {
+            importPollTimer.jobId = jobId;
+            importPollTimer.pollCount = 0;
+            importPollTimer.restart();
+        } else {
+            importModal.isWorking = false;
+            importModal.isError = true;
+            importModal.errorMessage = res ? res.error : "Failed to start import";
+        }
+    }
+
+    Timer {
+        id: importPollTimer
+        property string jobId: ""
+        property int pollCount: 0
+        interval: 400
+        repeat: true
+        onTriggered: {
+            pollCount++;
+            var res = appRoot.runHelper("poll-import", [jobId]);
+            if (!res) return;
+
+            if (res.status === "downloading" || res.status === "importing" || res.status === "starting") {
+                if (res.message) {
+                    importModal.statusText = res.message;
+                }
+            } else if (res.status === "completed") {
+                importPollTimer.stop();
+                importModal.isWorking = false;
+                importModal.isSuccess = true;
+                importModal.importMethod = res.method || "";
+                importModal.noRestart = !!res.norestart;
+                importModal.statusText = res.message || "Import completed successfully.";
+            } else if (res.status === "failed") {
+                importPollTimer.stop();
+                importModal.isWorking = false;
+                importModal.isError = true;
+                importModal.errorMessage = res.error || "Import failed.";
+            } else if (pollCount > 750) { // Safety timeout: 5 minutes (300 seconds)
+                importPollTimer.stop();
+                importModal.isWorking = false;
+                importModal.isError = true;
+                importModal.errorMessage = "Import timed out after 5 minutes.";
+            }
+        }
     }
 
     function restartXochitl() {
         runHelper("restart-xochitl", []);
         appRoot.close();
-    }
-
-    Timer {
-        id: importTimer
-        property string remotePath: ""
-        property string docTitle: ""
-        interval: 50
-        repeat: false
-        onTriggered: {
-            var res = appRoot.runHelper("import-pdf", [
-                appRoot.activeHost,
-                appRoot.activePort.toString(),
-                appRoot.activeUser,
-                appRoot.activeKey,
-                importTimer.remotePath,
-                importTimer.docTitle
-            ]);
-
-            importModal.isWorking = false;
-            if (res && res.success) {
-                importModal.isSuccess = true;
-                importModal.importMethod = res.method || "";
-                importModal.noRestart = !!res.norestart;
-                importModal.statusText = res.message || "Import completed successfully.";
-            } else {
-                importModal.isError = true;
-                importModal.errorMessage = res ? res.error : "Import failed.";
-            }
-        }
     }
 
     Timer {
