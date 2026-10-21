@@ -409,6 +409,22 @@ REMOTE_SEARCH_EOF
 
 # Probe candidates for reMarkable internal web server
 probe_web_server() {
+    # 1. Non-blocking kernel TCP socket check: check if port 80 (0x0050) is listening
+    # This avoids connecting via TCP from inside xochitl process which can stall the Qt event loop
+    if [ -r /proc/net/tcp ]; then
+        # 01630B0A is 10.11.99.1 in little-endian hex; 0050 is port 80; 0A is TCP_LISTEN
+        if grep -qE '01630B0A:0050 [0-9A-Fa-f:]+ 0A' /proc/net/tcp 2>/dev/null; then
+            echo "10.11.99.1"
+            return 0
+        fi
+        # Check any local address listening on port 80
+        if grep -qE ':[0-9A-Fa-f]{4}0050 [0-9A-Fa-f:]+ 0A' /proc/net/tcp 2>/dev/null || \
+           grep -qE ':0050 [0-9A-Fa-f:]+ 0A' /proc/net/tcp 2>/dev/null; then
+            echo "10.11.99.1"
+            return 0
+        fi
+    fi
+
     if ! command -v curl >/dev/null 2>&1; then
         return 1
     fi
