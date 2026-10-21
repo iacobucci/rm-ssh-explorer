@@ -23,6 +23,18 @@ Rectangle {
     property string activeKey: "/home/root/.ssh/id_dropbear"
     property string activeRemotePath: "~"
 
+    // No-Restart / Loopback state
+    property bool isLoopbackReady: false
+    property string loopbackHost: ""
+
+    function checkLoopbackStatus() {
+        var res = runHelper("test-loopback", []);
+        if (res && res.success) {
+            isLoopbackReady = !!res.webServerActive;
+            loopbackHost = res.listeningHost || "";
+        }
+    }
+
     // CommandExecutor instance from XOVI
     CommandExecutor {
         id: cmdExecutor
@@ -278,6 +290,7 @@ Rectangle {
             if (res && res.success) {
                 importModal.isSuccess = true;
                 importModal.importMethod = res.method || "";
+                importModal.noRestart = !!res.norestart;
                 importModal.statusText = res.message || "Import completed successfully.";
             } else {
                 importModal.isError = true;
@@ -288,6 +301,7 @@ Rectangle {
 
     Component.onCompleted: {
         loadConfig();
+        checkLoopbackStatus();
     }
 
     // Top Navigation Header
@@ -327,6 +341,25 @@ Rectangle {
                     font.pixelSize: Style.fontSizeSmall
                     font.bold: true
                     color: appRoot.currentMode === "explorer" ? Style.fg : "#AAAAAA"
+                }
+            }
+
+            Rectangle {
+                height: 36
+                width: loopbackBadgeText.width + 20
+                radius: 4
+                color: appRoot.isLoopbackReady ? Style.bg : "#2A2A2A"
+                border.color: appRoot.isLoopbackReady ? Style.border : "#555555"
+                border.width: 1
+                anchors.verticalCenter: parent.verticalCenter
+
+                Text {
+                    id: loopbackBadgeText
+                    anchors.centerIn: parent
+                    text: appRoot.isLoopbackReady ? "No-Restart" : "Direct-Write"
+                    font.pixelSize: Style.fontSizeSmall
+                    font.bold: true
+                    color: appRoot.isLoopbackReady ? Style.fg : "#888888"
                 }
             }
         }
@@ -447,6 +480,31 @@ Rectangle {
                 appRoot.deleteProfile(name);
             }
 
+            onRequestTestLoopback: {
+                var res = appRoot.runHelper("test-loopback", []);
+                if (res && res.success) {
+                    appRoot.isLoopbackReady = !!res.webServerActive;
+                    appRoot.loopbackHost = res.listeningHost || "";
+                    if (res.webServerActive) {
+                        connectionView.loopbackInfoText = "Active: Web server running on " + res.listeningHost + "! PDFs will be imported live with NO restart.";
+                    } else {
+                        connectionView.loopbackInfoText = "Inactive: Web server not responding on port 80. Tap 'Setup Loopback' or connect USB / use webinterface-onboot.";
+                    }
+                } else {
+                    connectionView.loopbackInfoText = "Error testing loopback: " + (res ? res.error : "Unknown error");
+                }
+            }
+
+            onRequestEnableLoopback: {
+                var res = appRoot.runHelper("enable-loopback", []);
+                if (res && res.success) {
+                    appRoot.checkLoopbackStatus();
+                    connectionView.loopbackInfoText = res.message || "Loopback setup completed.";
+                } else {
+                    connectionView.loopbackInfoText = "Error enabling loopback: " + (res ? res.error : "Unknown error");
+                }
+            }
+
             onInputFocused: (item) => {
                 virtualKeyboard.targetInput = item;
                 virtualKeyboard.visible = true;
@@ -543,6 +601,11 @@ Rectangle {
 
         onRequestRestartXochitl: {
             appRoot.restartXochitl();
+        }
+
+        onRequestCloseApp: {
+            importModal.visible = false;
+            appRoot.close();
         }
 
         onRequestClose: {

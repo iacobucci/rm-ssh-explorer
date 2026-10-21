@@ -18,16 +18,19 @@ Rectangle {
     property bool isError: false
     property string importMethod: ""
     property string errorMessage: ""
+    property bool noRestart: false
 
     signal requestImport(string path, string title)
     signal requestRestartXochitl()
     signal requestClose()
+    signal requestCloseApp()
     signal inputFocused(var item)
 
     function reset() {
         isWorking = false;
         isSuccess = false;
         isError = false;
+        noRestart = false;
         statusText = "";
         errorMessage = "";
         docTitle = fileName.replace(/\.[pP][dD][fF]$/, "");
@@ -310,7 +313,7 @@ Rectangle {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Import Complete!"
+                    text: modalRoot.noRestart ? "Live in Library!" : "Import Complete!"
                     font.pixelSize: Style.fontSizeHeader
                     font.bold: true
                     color: Style.fg
@@ -319,7 +322,9 @@ Rectangle {
                 Text {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: "Document \"" + modalRoot.docTitle + "\" has been imported into your reMarkable library."
+                    text: modalRoot.noRestart ?
+                          ("Document \"" + modalRoot.docTitle + "\" has been added directly to xochitl.") :
+                          ("Document \"" + modalRoot.docTitle + "\" has been imported into storage.")
                     font.pixelSize: Style.fontSizeBody
                     wrapMode: Text.WordWrap
                     color: Style.fg
@@ -328,43 +333,52 @@ Rectangle {
                 Text {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: "A quick restart of xochitl is needed to refresh your library."
+                    text: modalRoot.noRestart ?
+                          "Imported via USB internal loopback — no restart of xochitl needed!" :
+                          "A quick restart of xochitl is needed to refresh your library."
                     font.pixelSize: Style.fontSizeSmall
+                    font.bold: modalRoot.noRestart
                     wrapMode: Text.WordWrap
-                    color: Style.subtleFg
+                    color: modalRoot.noRestart ? Style.fg : Style.subtleFg
                 }
 
                 Item { width: 1; height: 10 }
 
-                // Actions: Restart xochitl now or Continue browsing
+                // Actions: if noRestart is true, offer Exit & Read or Continue. Otherwise, offer Restart or Continue.
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 14
 
                     Rectangle {
-                        width: 230
+                        width: modalRoot.noRestart ? 190 : 230
                         height: Style.buttonHeight
-                        color: restartMa.pressed ? Style.bg : Style.invertedBg
+                        color: actionPrimaryMa.pressed ? Style.bg : Style.invertedBg
                         border.color: Style.border
                         border.width: Style.borderWidth
                         radius: Style.cornerRadius
 
                         Text {
                             anchors.centerIn: parent
-                            text: "Restart xochitl now"
+                            text: modalRoot.noRestart ? "Exit & Read" : "Restart xochitl now"
                             font.pixelSize: Style.fontSizeBody
                             font.bold: true
-                            color: restartMa.pressed ? Style.invertedBg : Style.invertedFg
+                            color: actionPrimaryMa.pressed ? Style.invertedBg : Style.invertedFg
                         }
                         MouseArea {
-                            id: restartMa
+                            id: actionPrimaryMa
                             anchors.fill: parent
-                            onClicked: modalRoot.requestRestartXochitl()
+                            onClicked: {
+                                if (modalRoot.noRestart) {
+                                    modalRoot.requestCloseApp();
+                                } else {
+                                    modalRoot.requestRestartXochitl();
+                                }
+                            }
                         }
                     }
 
                     Rectangle {
-                        width: 140
+                        width: modalRoot.noRestart ? 180 : 140
                         height: Style.buttonHeight
                         color: contMa.pressed ? Style.activeHighlight : Style.bg
                         border.color: Style.border
@@ -373,7 +387,7 @@ Rectangle {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "Continue"
+                            text: modalRoot.noRestart ? "Keep Browsing" : "Continue"
                             font.pixelSize: Style.fontSizeBody
                             font.bold: true
                             color: Style.fg

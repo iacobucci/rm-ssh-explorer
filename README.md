@@ -16,9 +16,10 @@
 - **On-Screen Touch Keyboard:** Integrated virtual keyboard for typing hosts, paths, and credentials directly on the tablet.
 - **Connection Profiles:** Save, test, and delete multiple SSH profiles stored in `~/.config/ssh-explorer/config.json`.
 - **Fast Directory Traversal & Filters:** Browse remote folders with an integrated real-time search bar, quick filter toggles for *PDFs Only* and *Hidden Files* (dotfiles), plus human-readable file sizes.
-- **Fast PDF Import & Library Refresh:**
-  - Downloads and writes PDF documents and metadata directly to reMarkable storage (`~/.local/share/remarkable/xochitl/`).
-  - Offers a 1-tap **Restart xochitl now** button upon import to refresh the library immediately, or lets you continue browsing and restart later via the top-bar button.
+- **Smart No-Restart PDF Import (USB Loopback):**
+  - **Live In-Memory Refresh:** Automatically uploads documents through reMarkable's internal web server (`http://10.11.99.1/upload` via local loopback). Documents appear in the `xochitl` library **instantly without restarting the UI** and without closing SSH Explorer!
+  - **Graceful Fallback:** If the internal web server is inactive, it seamlessly falls back to direct storage creation (`~/.local/share/remarkable/xochitl/`) with the 1-tap **Restart xochitl now** option.
+  - **Real-Time Loopback Diagnostics:** Top-bar status badge and Setup panel let you test and activate loopback directly from the tablet.
 - **Lightweight & Self-Contained:** No Python, Node.js, or heavyweight runtimes required on device. Powered by standard POSIX shell tools, Dropbear, and XOVI's CommandExecutor.
 
 ---
@@ -38,29 +39,72 @@
 ## Architecture
 
 ```
-┌────────────────────────────────────────────────────────┐
-│             xochitl (reMarkable OS UI)                 │
-│                          │                             │
-│                  AppLoad Extension                     │
-│                          │                             │
-│    ┌─────────────────────▼───────────────────────┐     │
-│    │               SSH Explorer                  │     │
-│    │    (QML: ConnectionView, ExplorerView,      │     │
-│    │     VirtualKeyboard, ImportModal)           │     │
-│    └─────────────────────┬───────────────────────┘     │
-│                          │ net.asivery.CommandExecutor │
-│    ┌─────────────────────▼───────────────────────┐     │
-│    │               ssh-helper.sh                 │     │
-│    └─────────────┬───────────────────┬───────────┘     │
-└──────────────────┼───────────────────┼─────────────────┘
-                   │                   │
-         [ Dropbear SSH / SCP ]        │ [ Direct Storage Write ]
-                   │                   ▼
-                   │         reMarkable Library
-                   │     (/home/root/.../xochitl)
-                   ▼
-         [ Remote SSH Server ]
+┌─────────────────────────────────────────────────────────────────┐
+│                    xochitl (reMarkable OS UI)                   │
+│                    ▲                         │                  │
+│   [Live Model Sync]│                         │ AppLoad          │
+│                    │                         ▼ Extension        │
+│          ┌──────────────────────────────────────────────┐       │
+│          │                 SSH Explorer                 │       │
+│          │     (QML: ConnectionView, ExplorerView,      │       │
+│          │      VirtualKeyboard, ImportModal)           │       │
+│          └──────────────────────┬───────────────────────┘       │
+│                                 │ net.asivery.CommandExecutor   │
+│          ┌──────────────────────▼───────────────────────┐       │
+│          │                ssh-helper.sh                 │       │
+│          └───────────┬───────────────────┬──────────────┘       │
+│                      │                   │                      │
+│             [Loopback HTTP POST]         │                      │
+│              http://10.11.99.1/upload    │                      │
+│                      │                   │                      │
+└──────────────────────┼───────────────────┼──────────────────────┘
+                       │                   │
+             [ Dropbear SSH / SCP ]        │ [ Direct Storage Write ]
+                       │                   ▼   (Fallback)
+                       │          reMarkable Storage
+                       │       (/home/root/.../xochitl)
+                       ▼
+             [ Remote SSH Server ]
 ```
+
+---
+
+## No-Restart Library Refresh (`norestart` Branch)
+
+In stock reMarkable OS, writing documents directly to `/home/root/.local/share/remarkable/xochitl/` does not automatically update the on-screen library because `xochitl` does not watch the directory for changes. To refresh the library, users traditionally had to restart the whole `xochitl` service (`systemctl restart xochitl`), which terminates all open apps, causes screen flashing, and takes several seconds.
+
+The `norestart` branch implements a **USB Web Server Loopback** architecture to refresh the library without any restart:
+
+### How it Works:
+1. `xochitl` contains an internal HTTP web server (exposed on port `80` when the USB Web Interface is active).
+2. When a document is uploaded via `POST /upload`, `xochitl` processes the upload directly inside its own memory space and notifies its internal Qt document model.
+3. Instead of requiring a physical computer connected over USB, `ssh-helper.sh` performs an internal loopback request directly from the tablet (`http://10.11.99.1/upload` via `curl`).
+4. The document appears immediately on screen in the user's library without restarting `xochitl` and without closing SSH Explorer!
+
+### Loopback Operating Strategies:
+* **Strategy 1: Active USB Connection:** If the tablet is connected to a PC via USB and the Web Interface is toggled ON, loopback works out of the box with zero setup.
+* **Strategy 2: Standalone Wi-Fi with `webinterface-onboot`:** With community utilities like `webinterface-onboot` or `webinterface-wifi` installed from Toltec, the internal web server runs persistently in the background. SSH Explorer automatically uses it over Wi-Fi without needing a USB cable.
+* **Strategy 3: Non-Destructive Loopback Setup:** `ssh-helper.sh` automatically binds `10.11.99.1/32` to the `lo` loopback interface and sets `WebInterfaceEnabled=true` in `xochitl.conf`.
+* **Strategy 4: Graceful Fallback:** If port 80 is not listening, SSH Explorer automatically falls back to direct storage creation and provides the classic 1-tap restart button.
+
+### Testing & Diagnostic Tools:
+* **In the UI:** Tap **Test Loopback** or **Setup Loopback** in the *SSH Connection Setup* view, or watch the status badge in the top bar (`[⚡ No-Restart]` vs `[Direct-Write]`).
+* **From the CLI:**
+  ```bash
+  # Check web server status and network interfaces
+  ./ssh-helper.sh test-loopback
+
+  # Prepare loopback alias and xochitl.conf
+  ./ssh-helper.sh enable-loopback
+
+  # Test upload a local PDF file
+  ./ssh-helper.sh upload-loopback /path/to/test.pdf "Test Title"
+
+  # Run the full diagnostic & experiment suite
+  ./tools/loopback-experiment.sh --full
+  ```
+
+---
 
 ---
 

@@ -31,7 +31,11 @@ Item {
     signal requestTest(string host, int port, string user, string key)
     signal requestSaveProfile(string name, string host, int port, string user, string key, string path)
     signal requestDeleteProfile(string name)
+    signal requestTestLoopback()
+    signal requestEnableLoopback()
     signal inputFocused(var item)
+
+    property string loopbackInfoText: ""
 
     function loadProfile(p) {
         if (!p) return;
@@ -509,6 +513,87 @@ Item {
                                 connectionViewRoot.keyPath,
                                 connectionViewRoot.remotePath
                             );
+                        }
+                    }
+                }
+            }
+
+            // No-Restart / Loopback Diagnostics Section
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Style.subtleBorder
+            }
+
+            Column {
+                width: parent.width
+                spacing: 8
+
+                Row {
+                    width: parent.width
+                    spacing: 8
+
+                    Text {
+                        text: "Library Refresh Mode (No-Restart Loopback):"
+                        font.pixelSize: Style.fontSizeSmall
+                        font.bold: true
+                        color: Style.fg
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    text: connectionViewRoot.loopbackInfoText !== "" ? connectionViewRoot.loopbackInfoText :
+                          "Using reMarkable's internal USB web server via loopback allows PDFs to appear live in xochitl immediately without restarting the service."
+                    font.pixelSize: Style.fontSizeSmall
+                    color: Style.subtleFg
+                    wrapMode: Text.WordWrap
+                }
+
+                Row {
+                    spacing: 12
+
+                    Rectangle {
+                        width: 170
+                        height: 38
+                        color: testLbMa.pressed ? Style.activeHighlight : Style.bg
+                        border.color: Style.border
+                        border.width: 1
+                        radius: Style.cornerRadius
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Test Loopback"
+                            font.pixelSize: Style.fontSizeSmall
+                            font.bold: true
+                            color: Style.fg
+                        }
+                        MouseArea {
+                            id: testLbMa
+                            anchors.fill: parent
+                            onClicked: connectionViewRoot.requestTestLoopback()
+                        }
+                    }
+
+                    Rectangle {
+                        width: 180
+                        height: 38
+                        color: enableLbMa.pressed ? Style.activeHighlight : Style.bg
+                        border.color: Style.border
+                        border.width: 1
+                        radius: Style.cornerRadius
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Setup Loopback"
+                            font.pixelSize: Style.fontSizeSmall
+                            font.bold: true
+                            color: Style.fg
+                        }
+                        MouseArea {
+                            id: enableLbMa
+                            anchors.fill: parent
+                            onClicked: connectionViewRoot.requestEnableLoopback()
                         }
                     }
                 }

@@ -405,6 +405,151 @@ REMOTE_SEARCH_EOF
     '
 }
 
+# --- USB Loopback & No-Restart Library Refresh ---
+
+# Probe candidates for reMarkable internal web server
+probe_web_server() {
+    if ! command -v curl >/dev/null 2>&1; then
+        return 1
+    fi
+
+    # Check candidates: optional LOOPBACK_HOST override, then 10.11.99.1, then 127.0.0.1, then localhost
+    for CANDIDATE in ${LOOPBACK_HOST:+"$LOOPBACK_HOST"} "10.11.99.1" "127.0.0.1" "localhost"; do
+        STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 1 "http://$CANDIDATE/" 2>/dev/null || echo "000")
+        if [ "$STATUS_CODE" = "200" ] || [ "$STATUS_CODE" = "301" ] || [ "$STATUS_CODE" = "302" ]; then
+            echo "$CANDIDATE"
+            return 0
+        fi
+        STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 1 "http://$CANDIDATE/documents/" 2>/dev/null || echo "000")
+        if [ "$STATUS_CODE" = "200" ]; then
+            echo "$CANDIDATE"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Attempt non-disruptive loopback setup
+setup_loopback_env() {
+    # 1. Ensure 10.11.99.1 is bound to loopback or an interface so local connection succeeds
+    if command -v ip >/dev/null 2>&1; then
+        if ! ip addr show dev lo 2>/dev/null | grep -q "10.11.99.1"; then
+            ip addr add 10.11.99.1/32 dev lo 2>/dev/null || true
+        fi
+        if [ -d /sys/class/net/usb0 ]; then
+            ip link set dev usb0 up 2>/dev/null || true
+        fi
+    elif command -v ifconfig >/dev/null 2>&1; then
+        if ! ifconfig 2>/dev/null | grep -q "10.11.99.1"; then
+            ifconfig lo:1 10.11.99.1 netmask 255.255.255.255 up 2>/dev/null || true
+        fi
+    fi
+}
+
+# Direct xochitl document storage creation (fallback when web server is not running)
+import_direct_xochitl() {
+    SRC_PDF="$1"
+    DOC_TITLE="$2"
+
+    mkdir -p "$XOCHITL_DIR"
+
+    UUID=""
+    if [ -f /proc/sys/kernel/random/uuid ]; then
+        UUID=$(cat /proc/sys/kernel/random/uuid)
+    elif command -v uuidgen >/dev/null 2>&1; then
+        UUID=$(uuidgen)
+    else
+        UUID=$(od -x /dev/urandom 2>/dev/null | head -1 | awk '{printf "%s-%s-%s-%s-%s", $2, $3, $4, $5, $6$7}')
+    fi
+
+    if [ -z "$UUID" ]; then
+        rm -f "$SRC_PDF"
+        printf '{"success":false,"error":"Failed to generate UUID for document import"}\n'
+        return 1
+    fi
+
+    mv "$SRC_PDF" "$XOCHITL_DIR/$UUID.pdf"
+
+    NOW_MS=$(date +%s)000
+    cat > "$XOCHITL_DIR/$UUID.metadata" << META_EOF
+{
+  "deleted": false,
+  "lastModified": "$NOW_MS",
+  "metadatamodified": true,
+  "modified": true,
+  "parent": "",
+  "pinned": false,
+  "synced": false,
+  "type": "DocumentType",
+  "version": 1,
+  "visibleName": "$DOC_TITLE"
+}
+META_EOF
+
+    cat > "$XOCHITL_DIR/$UUID.content" << CONTENT_EOF
+{
+  "extraMetadata": {},
+  "fileType": "pdf",
+  "pageCount": 0,
+  "lastOpenedPage": 0,
+  "lineHeight": -1,
+  "margins": 180,
+  "textScale": 1,
+  "transform": {}
+}
+CONTENT_EOF
+
+    SAFE_TITLE=$(echo "$DOC_TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    printf '{"success":true,"method":"direct_xochitl","norestart":false,"title":"%s","uuid":"%s","message":"Document imported to storage (restart required to display)"}\n' "$SAFE_TITLE" "$UUID"
+    return 0
+}
+
+# Upload PDF via internal web server loopback
+upload_via_web_loopback() {
+    PDF_FILE="$1"
+    DOC_TITLE="$2"
+
+    if [ ! -f "$PDF_FILE" ]; then
+        return 1
+    fi
+
+    if ! command -v curl >/dev/null 2>&1; then
+        return 2
+    fi
+
+    SERVER_HOST=$(probe_web_server)
+    if [ -z "$SERVER_HOST" ]; then
+        setup_loopback_env
+        SERVER_HOST=$(probe_web_server)
+    fi
+
+    if [ -z "$SERVER_HOST" ]; then
+        return 3
+    fi
+
+    # Sanitize title for filename used by xochitl as visible title
+    SAFE_NAME=$(echo "$DOC_TITLE" | sed 's/[^a-zA-Z0-9._ -]/_/g')
+    [ -z "$SAFE_NAME" ] && SAFE_NAME="document"
+    SAFE_NAME="$SAFE_NAME.pdf"
+
+    TMP_RESP="/tmp/ssh_loopback_resp_$$.txt"
+    rm -f "$TMP_RESP"
+
+    HTTP_STATUS=$(curl -s -S -o "$TMP_RESP" -w "%{http_code}" -m 30 -X POST \
+        "http://$SERVER_HOST/upload" \
+        -H "Origin: http://$SERVER_HOST" \
+        -H "Referer: http://$SERVER_HOST/" \
+        -F "file=@$PDF_FILE;filename=$SAFE_NAME;type=application/pdf" 2>/dev/null || echo "000")
+
+    rm -f "$TMP_RESP"
+
+    if echo "$HTTP_STATUS" | grep -qE "^(200|201|204)$"; then
+        return 0
+    fi
+
+    return 4
+}
+
 cmd_import_pdf() {
     HOST="$1"
     PORT="$2"
@@ -475,62 +620,16 @@ REMOTE_CAT_EOF
         return
     fi
 
-
-    # Direct xochitl document creation using UUID
-    mkdir -p "$XOCHITL_DIR"
-
-    # Generate UUID
-    UUID=""
-    if [ -f /proc/sys/kernel/random/uuid ]; then
-        UUID=$(cat /proc/sys/kernel/random/uuid)
-    elif command -v uuidgen >/dev/null 2>&1; then
-        UUID=$(uuidgen)
-    else
-        UUID=$(od -x /dev/urandom | head -1 | awk '{printf "%s-%s-%s-%s-%s", $2, $3, $4, $5, $6$7}')
-    fi
-
-    if [ -z "$UUID" ]; then
+    # Attempt 1: Upload via internal USB web interface loopback (no restart needed!)
+    if upload_via_web_loopback "$TMP_PDF" "$TITLE"; then
         rm -f "$TMP_PDF"
-        printf '{"success":false,"error":"Failed to generate UUID for document import"}\n'
+        SAFE_TITLE=$(echo "$TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        printf '{"success":true,"method":"web_loopback","norestart":true,"title":"%s","message":"Document imported live into library via internal server (no restart required)!"}\n' "$SAFE_TITLE"
         return
     fi
 
-    # Move PDF into place
-    mv "$TMP_PDF" "$XOCHITL_DIR/$UUID.pdf"
-
-    # Write .metadata
-    NOW_MS=$(date +%s)000
-    cat > "$XOCHITL_DIR/$UUID.metadata" << META_EOF
-{
-  "deleted": false,
-  "lastModified": "$NOW_MS",
-  "metadatamodified": true,
-  "modified": true,
-  "parent": "",
-  "pinned": false,
-  "synced": false,
-  "type": "DocumentType",
-  "version": 1,
-  "visibleName": "$TITLE"
-}
-META_EOF
-
-    # Write .content
-    cat > "$XOCHITL_DIR/$UUID.content" << CONTENT_EOF
-{
-  "extraMetadata": {},
-  "fileType": "pdf",
-  "pageCount": 0,
-  "lastOpenedPage": 0,
-  "lineHeight": -1,
-  "margins": 180,
-  "textScale": 1,
-  "transform": {}
-}
-CONTENT_EOF
-
-    SAFE_TITLE=$(echo "$TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    printf '{"success":true,"method":"direct_xochitl","title":"%s","uuid":"%s","message":"Document imported to storage"}\n' "$SAFE_TITLE" "$UUID"
+    # Attempt 2: Fallback to direct xochitl storage creation (requires xochitl restart to display)
+    import_direct_xochitl "$TMP_PDF" "$TITLE"
 }
 
 cmd_load_config() {
@@ -593,57 +692,123 @@ cmd_import_local_pdf() {
         return
     fi
 
-    # Direct xochitl document creation
-    mkdir -p "$XOCHITL_DIR"
-
-    UUID=""
-    if [ -f /proc/sys/kernel/random/uuid ]; then
-        UUID=$(cat /proc/sys/kernel/random/uuid)
-    elif command -v uuidgen >/dev/null 2>&1; then
-        UUID=$(uuidgen)
-    else
-        UUID=$(od -x /dev/urandom | head -1 | awk '{printf "%s-%s-%s-%s-%s", $2, $3, $4, $5, $6$7}')
-    fi
-
-    if [ -z "$UUID" ]; then
+    # Attempt 1: Upload via internal USB web interface loopback (no restart needed!)
+    if upload_via_web_loopback "$TMP_PDF" "$TITLE"; then
         rm -f "$TMP_PDF"
-        printf '{"success":false,"error":"Failed to generate UUID"}\n'
+        SAFE_TITLE=$(echo "$TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        printf '{"success":true,"method":"web_loopback","norestart":true,"title":"%s","message":"Document imported live into library via internal server (no restart required)!"}\n' "$SAFE_TITLE"
         return
     fi
 
-    mv "$TMP_PDF" "$XOCHITL_DIR/$UUID.pdf"
-
-    NOW_MS=$(date +%s)000
-    cat > "$XOCHITL_DIR/$UUID.metadata" << META_EOF
-{
-  "deleted": false,
-  "lastModified": "$NOW_MS",
-  "metadatamodified": true,
-  "modified": true,
-  "parent": "",
-  "pinned": false,
-  "synced": false,
-  "type": "DocumentType",
-  "version": 1,
-  "visibleName": "$TITLE"
+    # Attempt 2: Fallback to direct xochitl storage creation
+    import_direct_xochitl "$TMP_PDF" "$TITLE"
 }
-META_EOF
 
-    cat > "$XOCHITL_DIR/$UUID.content" << CONTENT_EOF
-{
-  "extraMetadata": {},
-  "fileType": "pdf",
-  "pageCount": 0,
-  "lastOpenedPage": 0,
-  "lineHeight": -1,
-  "margins": 180,
-  "textScale": 1,
-  "transform": {}
+cmd_test_loopback() {
+    setup_loopback_env
+
+    CURL_AVAIL="false"
+    if command -v curl >/dev/null 2>&1; then
+        CURL_AVAIL="true"
+    fi
+
+    WEB_ACTIVE="false"
+    ACTIVE_HOST=""
+    PROBED_HOST=$(probe_web_server || true)
+    if [ -n "$PROBED_HOST" ]; then
+        WEB_ACTIVE="true"
+        ACTIVE_HOST="$PROBED_HOST"
+    fi
+
+    CONF_ENABLED="unknown"
+    XOCHITL_CONF="/home/root/.config/remarkable/xochitl.conf"
+    if [ -f "$XOCHITL_CONF" ]; then
+        if grep -q '^WebInterfaceEnabled=true' "$XOCHITL_CONF"; then
+            CONF_ENABLED="true"
+        elif grep -q '^WebInterfaceEnabled=false' "$XOCHITL_CONF"; then
+            CONF_ENABLED="false"
+        else
+            CONF_ENABLED="not_set"
+        fi
+    fi
+
+    IP10_PRESENT="false"
+    if ip addr show 2>/dev/null | grep -q "10.11.99.1"; then
+        IP10_PRESENT="true"
+    elif ifconfig 2>/dev/null | grep -q "10.11.99.1"; then
+        IP10_PRESENT="true"
+    fi
+
+    USB0_PRESENT="false"
+    USB0_STATE="down"
+    USB0_CARRIER="0"
+    if [ -d "/sys/class/net/usb0" ]; then
+        USB0_PRESENT="true"
+        if [ -f "/sys/class/net/usb0/operstate" ]; then
+            USB0_STATE=$(cat "/sys/class/net/usb0/operstate" 2>/dev/null || echo "unknown")
+        fi
+        if [ -f "/sys/class/net/usb0/carrier" ]; then
+            USB0_CARRIER=$(cat "/sys/class/net/usb0/carrier" 2>/dev/null || echo "0")
+        fi
+    fi
+
+    STATUS_MSG=""
+    if [ "$WEB_ACTIVE" = "true" ]; then
+        STATUS_MSG="Internal Web Server is active on $ACTIVE_HOST. No-Restart mode is ready!"
+    else
+        STATUS_MSG="Internal Web Server is not responding. Direct storage write fallback will be used."
+    fi
+
+    printf '{"success":true,"webServerActive":%s,"listeningHost":"%s","curlAvailable":%s,"xochitlConfWebEnabled":"%s","ip10Present":%s,"usb0Present":%s,"usb0State":"%s","usb0Carrier":"%s","message":"%s"}\n' \
+        "$WEB_ACTIVE" "$ACTIVE_HOST" "$CURL_AVAIL" "$CONF_ENABLED" "$IP10_PRESENT" "$USB0_PRESENT" "$USB0_STATE" "$USB0_CARRIER" "$STATUS_MSG"
 }
-CONTENT_EOF
 
-    SAFE_TITLE=$(echo "$TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    printf '{"success":true,"method":"direct_xochitl","title":"%s","uuid":"%s","message":"PDF written to xochitl storage"}\n' "$SAFE_TITLE" "$UUID"
+cmd_enable_loopback() {
+    setup_loopback_env
+
+    CONF_UPDATED="false"
+    XOCHITL_CONF="/home/root/.config/remarkable/xochitl.conf"
+    if [ -f "$XOCHITL_CONF" ]; then
+        if grep -q '^WebInterfaceEnabled=' "$XOCHITL_CONF"; then
+            sed -i 's/^WebInterfaceEnabled=.*/WebInterfaceEnabled=true/' "$XOCHITL_CONF"
+            CONF_UPDATED="true"
+        else
+            if grep -q '^\[General\]' "$XOCHITL_CONF"; then
+                sed -i '/^\[General\]/a WebInterfaceEnabled=true' "$XOCHITL_CONF"
+            else
+                echo "WebInterfaceEnabled=true" >> "$XOCHITL_CONF"
+            fi
+            CONF_UPDATED="true"
+        fi
+    fi
+
+    HOST=$(probe_web_server || true)
+    if [ -n "$HOST" ]; then
+        printf '{"success":true,"host":"%s","confUpdated":%s,"message":"Loopback active on %s (No-Restart mode ready)"}\n' "$HOST" "$CONF_UPDATED" "$HOST"
+    else
+        printf '{"success":true,"host":"","confUpdated":%s,"message":"Loopback network and config prepared. Note: if web server is not running, connect USB or install webinterface-onboot."}\n' "$CONF_UPDATED"
+    fi
+}
+
+cmd_upload_loopback() {
+    LOCAL_PDF="$1"
+    DOC_TITLE="$2"
+
+    if [ -z "$LOCAL_PDF" ] || [ ! -f "$LOCAL_PDF" ]; then
+        printf '{"success":false,"error":"Local file not found"}\n'
+        return 1
+    fi
+
+    if [ -z "$DOC_TITLE" ]; then
+        DOC_TITLE=$(basename "$LOCAL_PDF" | sed 's/\.[pP][dD][fF]$//')
+    fi
+
+    if upload_via_web_loopback "$LOCAL_PDF" "$DOC_TITLE"; then
+        SAFE_TITLE=$(echo "$DOC_TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        printf '{"success":true,"method":"web_loopback","norestart":true,"title":"%s","message":"Document uploaded to loopback server successfully (live in library)!"}\n' "$SAFE_TITLE"
+    else
+        printf '{"success":false,"error":"Loopback web server not reachable or rejected upload"}\n'
+    fi
 }
 
 cmd_restart_xochitl() {
@@ -674,6 +839,15 @@ case "$ACTION" in
         ;;
     import-local)
         cmd_import_local_pdf "$@"
+        ;;
+    test-loopback)
+        cmd_test_loopback "$@"
+        ;;
+    enable-loopback)
+        cmd_enable_loopback "$@"
+        ;;
+    upload-loopback)
+        cmd_upload_loopback "$@"
         ;;
     restart-xochitl)
         cmd_restart_xochitl "$@"

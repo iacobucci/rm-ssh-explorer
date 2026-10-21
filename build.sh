@@ -25,9 +25,13 @@ echo "[2/4] Copying manifest and icon..."
 cp manifest.json "$DIST_DIR/"
 cp icon.png "$DIST_DIR/"
 
-echo "[3/4] Copying and preparing ssh-helper.sh..."
+echo "[3/4] Copying and preparing ssh-helper.sh and tools..."
 cp ssh-helper.sh "$DIST_DIR/"
 chmod +x "$DIST_DIR/ssh-helper.sh"
+if [ -d "$SCRIPT_DIR/tools" ]; then
+    cp -r "$SCRIPT_DIR/tools" "$DIST_DIR/"
+    chmod +x "$DIST_DIR/tools/"*.sh 2>/dev/null || true
+fi
 
 echo "[4/4] Creating tarball for easy transfer..."
 cd "$SCRIPT_DIR/dist"
