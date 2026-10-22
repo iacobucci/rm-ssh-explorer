@@ -2,11 +2,28 @@
 # ssh-helper.sh - Helper script for SSH Explorer on reMarkable 2
 # Provides JSON-based CLI subcommands for QML interface.
 
+# Ensure standard, Vellum, and Toltec package paths are present in PATH
+export PATH="/home/root/.vellum/bin:/opt/bin:/opt/sbin:/usr/local/bin:/usr/bin:/bin:/home/root/.local/bin:/home/root/bin:$PATH"
 
 # Default locations
 XOCHITL_DIR="${XOCHITL_DIR:-/home/root/.local/share/remarkable/xochitl}"
 CONFIG_DIR="${CONFIG_DIR:-/home/root/.config/ssh-explorer}"
 CONFIG_FILE="$CONFIG_DIR/config.json"
+
+# Locate tailscale binary on reMarkable / Linux
+find_tailscale_bin() {
+    if command -v tailscale >/dev/null 2>&1; then
+        command -v tailscale
+        return 0
+    fi
+    for p in /home/root/.vellum/bin/tailscale /opt/bin/tailscale /opt/sbin/tailscale /usr/bin/tailscale /usr/sbin/tailscale /usr/local/bin/tailscale /home/root/.local/bin/tailscale /home/root/bin/tailscale; do
+        if [ -x "$p" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+    return 1
+}
 
 # Detect SSH client: Dropbear (dbclient) or OpenSSH (ssh)
 setup_ssh_cmd() {
@@ -14,6 +31,8 @@ setup_ssh_cmd() {
     PORT="${2:-22}"
     USER="${3:-root}"
     KEY="$4"
+    USE_TAILSCALE="$5"
+    TAILSCALE_TARGET="$6"
 
     if [ -z "$PORT" ] || [ "$PORT" = "0" ]; then
         PORT=22
@@ -22,38 +41,105 @@ setup_ssh_cmd() {
         USER="root"
     fi
 
-    # Determine command
+    SSH_HOST="$HOST"
+    SSH_PORT="$PORT"
+    SSH_USER="$USER"
+    SSH_KEY="$KEY"
+    SSH_TARGET="$USER@$HOST"
+    SSH_PROXY_CMD=""
+
+    # Tailscale proxy configuration
+    if [ "$USE_TAILSCALE" = "1" ] || [ "$USE_TAILSCALE" = "true" ] || [ "$USE_TAILSCALE" = "yes" ]; then
+        TS_HOST="$HOST"
+        TS_PORT="$PORT"
+        if [ -n "$TAILSCALE_TARGET" ]; then
+            case "$TAILSCALE_TARGET" in
+                *:*)
+                    TS_HOST="${TAILSCALE_TARGET%%:*}"
+                    TS_PORT="${TAILSCALE_TARGET##*:}"
+                    ;;
+                *)
+                    TS_HOST="$TAILSCALE_TARGET"
+                    ;;
+            esac
+        fi
+        [ -z "$TS_PORT" ] && TS_PORT="22"
+
+        TS_BIN=$(find_tailscale_bin || true)
+        if [ -z "$TS_BIN" ] || { ! command -v "$TS_BIN" >/dev/null 2>&1 && [ ! -x "$TS_BIN" ]; }; then
+            printf '{"success":false,"error":"Tailscale binary not found on device"}\n'
+            exit 1
+        fi
+        SSH_PROXY_CMD="$TS_BIN nc $TS_HOST $TS_PORT"
+    elif [ "$USE_TAILSCALE" = "custom" ] && [ -n "$TAILSCALE_TARGET" ]; then
+        SSH_PROXY_CMD="$TAILSCALE_TARGET"
+    fi
+
+    # Determine command binary
     if command -v dbclient >/dev/null 2>&1; then
         SSH_BIN="dbclient"
-        # -y: automatically accept unknown host keys
-        # -I: idle timeout
-        # -K: keepalive interval
-        SSH_ARGS="-y -p $PORT -I 12 -K 5"
-        if [ -n "$KEY" ] && [ -f "$KEY" ]; then
-            SSH_ARGS="$SSH_ARGS -i $KEY"
-        fi
-        SSH_TARGET="$USER@$HOST"
     elif command -v ssh >/dev/null 2>&1; then
         SSH_BIN="ssh"
-        SSH_ARGS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p $PORT"
-        if [ -n "$KEY" ] && [ -f "$KEY" ]; then
-            SSH_ARGS="$SSH_ARGS -i $KEY"
-        fi
-        SSH_TARGET="$USER@$HOST"
     else
         printf '{"success":false,"error":"Neither dbclient nor ssh binary found on device"}\n'
         exit 1
     fi
 }
 
-# Run SSH with optional timeout
-run_ssh() {
-    # If timeout command is available, use it
-    if command -v timeout >/dev/null 2>&1; then
-        timeout 15 "$SSH_BIN" $SSH_ARGS "$SSH_TARGET" "$@"
-    else
-        "$SSH_BIN" $SSH_ARGS "$SSH_TARGET" "$@"
+# Run SSH with configurable timeout and optional stdin/stdout redirection
+run_ssh_timed() {
+    TIMEOUT_SEC="$1"
+    shift
+
+    TIMEOUT_PREFIX=""
+    if [ "$TIMEOUT_SEC" -gt 0 ] 2>/dev/null && command -v timeout >/dev/null 2>&1; then
+        TIMEOUT_PREFIX="timeout $TIMEOUT_SEC"
     fi
+
+    if [ "$SSH_BIN" = "dbclient" ]; then
+        # Dropbear dbclient:
+        # -y: automatically accept unknown host keys
+        # -I: idle timeout
+        # -K: keepalive interval
+        # -J: proxy command (equivalent to OpenSSH ProxyCommand)
+        if [ -n "$SSH_PROXY_CMD" ]; then
+            if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
+                $TIMEOUT_PREFIX dbclient -y -I 12 -K 5 -i "$SSH_KEY" -J "$SSH_PROXY_CMD" "$SSH_TARGET" "$@"
+            else
+                $TIMEOUT_PREFIX dbclient -y -I 12 -K 5 -J "$SSH_PROXY_CMD" "$SSH_TARGET" "$@"
+            fi
+        else
+            if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
+                $TIMEOUT_PREFIX dbclient -y -p "$SSH_PORT" -I 12 -K 5 -i "$SSH_KEY" "$SSH_TARGET" "$@"
+            else
+                $TIMEOUT_PREFIX dbclient -y -p "$SSH_PORT" -I 12 -K 5 "$SSH_TARGET" "$@"
+            fi
+        fi
+    elif [ "$SSH_BIN" = "ssh" ]; then
+        # OpenSSH client:
+        # ProxyCommand: routes transport through tailscale nc
+        if [ -n "$SSH_PROXY_CMD" ]; then
+            if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
+                $TIMEOUT_PREFIX ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o "ProxyCommand=$SSH_PROXY_CMD" -i "$SSH_KEY" "$SSH_TARGET" "$@"
+            else
+                $TIMEOUT_PREFIX ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o "ProxyCommand=$SSH_PROXY_CMD" "$SSH_TARGET" "$@"
+            fi
+        else
+            if [ -n "$SSH_KEY" ] && [ -f "$SSH_KEY" ]; then
+                $TIMEOUT_PREFIX ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p "$SSH_PORT" -i "$SSH_KEY" "$SSH_TARGET" "$@"
+            else
+                $TIMEOUT_PREFIX ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p "$SSH_PORT" "$SSH_TARGET" "$@"
+            fi
+        fi
+    else
+        printf '{"success":false,"error":"SSH binary not determined"}\n'
+        return 1
+    fi
+}
+
+# Run SSH with default timeout (15s)
+run_ssh() {
+    run_ssh_timed 15 "$@"
 }
 
 cmd_test_connection() {
@@ -61,13 +147,15 @@ cmd_test_connection() {
     PORT="$2"
     USER="$3"
     KEY="$4"
+    USE_TAILSCALE="$5"
+    TAILSCALE_TARGET="$6"
 
     if [ -z "$HOST" ]; then
         printf '{"success":false,"error":"Host is required"}\n'
         return
     fi
 
-    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY"
+    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY" "$USE_TAILSCALE" "$TAILSCALE_TARGET"
 
     OUTPUT=$(run_ssh "echo __SSH_EXPLORER_OK__" 2>&1)
     STATUS=$?
@@ -86,13 +174,15 @@ cmd_list_dir() {
     USER="$3"
     KEY="$4"
     REMOTE_PATH="$5"
+    USE_TAILSCALE="$6"
+    TAILSCALE_TARGET="$7"
 
     if [ -z "$HOST" ]; then
         printf '{"success":false,"error":"Host is required"}\n'
         return
     fi
 
-    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY"
+    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY" "$USE_TAILSCALE" "$TAILSCALE_TARGET"
 
     # Send remote shell probe
     RAW_OUT=$(run_ssh "sh -s -- \"$REMOTE_PATH\"" << 'REMOTE_EOF' 2>&1
@@ -223,13 +313,15 @@ cmd_search_dir() {
     KEY="$4"
     REMOTE_PATH="$5"
     QUERY="$6"
+    USE_TAILSCALE="$7"
+    TAILSCALE_TARGET="$8"
 
     if [ -z "$HOST" ]; then
         printf '{"success":false,"error":"Host is required"}\n'
         return
     fi
 
-    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY"
+    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY" "$USE_TAILSCALE" "$TAILSCALE_TARGET"
 
     # Send remote search probe via SSH
     RAW_OUT=$(run_ssh "sh -s -- \"$REMOTE_PATH\" \"$QUERY\"" << 'REMOTE_SEARCH_EOF' 2>&1
@@ -574,13 +666,15 @@ cmd_import_pdf() {
     KEY="$4"
     REMOTE_PATH="$5"
     TITLE="$6"
+    USE_TAILSCALE="$7"
+    TAILSCALE_TARGET="$8"
 
     if [ -z "$HOST" ] || [ -z "$REMOTE_PATH" ]; then
         printf '{"success":false,"error":"Host and remote file path are required"}\n'
         return
     fi
 
-    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY"
+    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY" "$USE_TAILSCALE" "$TAILSCALE_TARGET"
 
     FILENAME=$(basename "$REMOTE_PATH")
     if [ -z "$TITLE" ]; then
@@ -595,8 +689,7 @@ cmd_import_pdf() {
 
     # Download via SSH streaming with generous timeout
     # Pass REMOTE_PATH safely via sh -s to handle spaces and quotes
-    if command -v timeout >/dev/null 2>&1; then
-        timeout 180 "$SSH_BIN" $SSH_ARGS "$SSH_TARGET" "sh -s -- \"$REMOTE_PATH\"" << 'REMOTE_CAT_EOF' > "$TMP_PDF" 2> "$TMP_ERR"
+    run_ssh_timed 180 "sh -s -- \"$REMOTE_PATH\"" << 'REMOTE_CAT_EOF' > "$TMP_PDF" 2> "$TMP_ERR"
 TARGET="$1"
 if [ ! -f "$TARGET" ] && [ ! -r "$TARGET" ]; then
     echo "Cannot read remote file: $TARGET" >&2
@@ -604,18 +697,7 @@ if [ ! -f "$TARGET" ] && [ ! -r "$TARGET" ]; then
 fi
 exec cat "$TARGET"
 REMOTE_CAT_EOF
-        STATUS=$?
-    else
-        "$SSH_BIN" $SSH_ARGS "$SSH_TARGET" "sh -s -- \"$REMOTE_PATH\"" << 'REMOTE_CAT_EOF' > "$TMP_PDF" 2> "$TMP_ERR"
-TARGET="$1"
-if [ ! -f "$TARGET" ] && [ ! -r "$TARGET" ]; then
-    echo "Cannot read remote file: $TARGET" >&2
-    exit 1
-fi
-exec cat "$TARGET"
-REMOTE_CAT_EOF
-        STATUS=$?
-    fi
+    STATUS=$?
 
     if [ $STATUS -ne 0 ] || [ ! -s "$TMP_PDF" ]; then
         ERR_MSG="Failed to download file from remote host"
@@ -658,6 +740,8 @@ worker_import() {
     KEY="$5"
     REMOTE_PATH="$6"
     TITLE="$7"
+    USE_TAILSCALE="$8"
+    TAILSCALE_TARGET="$9"
     STATUS_FILE="/tmp/ssh_job_${JOB_ID}.json"
 
     write_status() {
@@ -673,7 +757,7 @@ worker_import() {
     fi
     SAFE_TITLE=$(echo "$TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
-    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY"
+    setup_ssh_cmd "$HOST" "$PORT" "$USER" "$KEY" "$USE_TAILSCALE" "$TAILSCALE_TARGET"
 
     TMP_PDF="/tmp/ssh_import_${JOB_ID}.pdf"
     TMP_ERR="/tmp/ssh_import_${JOB_ID}.err"
@@ -681,8 +765,7 @@ worker_import() {
 
     write_status '{"status":"downloading","message":"Downloading file over SSH..."}'
 
-    if command -v timeout >/dev/null 2>&1; then
-        timeout 300 "$SSH_BIN" $SSH_ARGS "$SSH_TARGET" "sh -s -- \"$REMOTE_PATH\"" << 'REMOTE_CAT_EOF' > "$TMP_PDF" 2> "$TMP_ERR"
+    run_ssh_timed 300 "sh -s -- \"$REMOTE_PATH\"" << 'REMOTE_CAT_EOF' > "$TMP_PDF" 2> "$TMP_ERR"
 TARGET="$1"
 if [ ! -f "$TARGET" ] && [ ! -r "$TARGET" ]; then
     echo "Cannot read remote file: $TARGET" >&2
@@ -690,18 +773,7 @@ if [ ! -f "$TARGET" ] && [ ! -r "$TARGET" ]; then
 fi
 exec cat "$TARGET"
 REMOTE_CAT_EOF
-        STATUS=$?
-    else
-        "$SSH_BIN" $SSH_ARGS "$SSH_TARGET" "sh -s -- \"$REMOTE_PATH\"" << 'REMOTE_CAT_EOF' > "$TMP_PDF" 2> "$TMP_ERR"
-TARGET="$1"
-if [ ! -f "$TARGET" ] && [ ! -r "$TARGET" ]; then
-    echo "Cannot read remote file: $TARGET" >&2
-    exit 1
-fi
-exec cat "$TARGET"
-REMOTE_CAT_EOF
-        STATUS=$?
-    fi
+    STATUS=$?
 
     if [ $STATUS -ne 0 ] || [ ! -s "$TMP_PDF" ]; then
         ERR_MSG="Failed to download file from remote host"
@@ -745,6 +817,8 @@ cmd_start_import() {
     KEY="$5"
     REMOTE_PATH="$6"
     TITLE="$7"
+    USE_TAILSCALE="$8"
+    TAILSCALE_TARGET="$9"
 
     if [ -z "$JOB_ID" ] || [ -z "$HOST" ] || [ -z "$REMOTE_PATH" ]; then
         printf '{"success":false,"error":"Host and remote file path are required"}\n'
@@ -756,7 +830,7 @@ cmd_start_import() {
     printf '{"status":"starting","message":"Starting import..."}\n' > "$STATUS_FILE"
 
     (
-        worker_import "$JOB_ID" "$HOST" "$PORT" "$USER" "$KEY" "$REMOTE_PATH" "$TITLE"
+        worker_import "$JOB_ID" "$HOST" "$PORT" "$USER" "$KEY" "$REMOTE_PATH" "$TITLE" "$USE_TAILSCALE" "$TAILSCALE_TARGET"
     ) >/dev/null 2>&1 &
 
     printf '{"success":true,"jobId":"%s"}\n' "$JOB_ID"
@@ -770,6 +844,36 @@ cmd_poll_import() {
     else
         printf '{"status":"unknown","error":"Job status not found"}\n'
     fi
+}
+
+cmd_check_tailscale() {
+    TS_BIN=$(find_tailscale_bin || true)
+    if [ -z "$TS_BIN" ] || ! command -v "$TS_BIN" >/dev/null 2>&1; then
+        printf '{"success":true,"installed":false,"message":"Tailscale binary not found"}\n'
+        return
+    fi
+
+    TS_IP=""
+    TS_STATUS=""
+    if command -v timeout >/dev/null 2>&1; then
+        TS_IP=$(timeout 2 "$TS_BIN" ip -4 2>/dev/null || true)
+        TS_STATUS=$(timeout 2 "$TS_BIN" status 2>/dev/null | head -n 1 || true)
+    else
+        TS_IP=$("$TS_BIN" ip -4 2>/dev/null || true)
+        TS_STATUS=$("$TS_BIN" status 2>/dev/null | head -n 1 || true)
+    fi
+
+    TS_IP=$(echo "$TS_IP" | tr -d '\r\n')
+    CLEAN_STATUS=$(echo "$TS_STATUS" | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g')
+    CLEAN_BIN=$(echo "$TS_BIN" | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+    RUNNING="false"
+    if [ -n "$TS_IP" ]; then
+        RUNNING="true"
+    fi
+
+    printf '{"success":true,"installed":true,"running":%s,"binary":"%s","ip":"%s","status":"%s"}\n' \
+        "$RUNNING" "$CLEAN_BIN" "$TS_IP" "$CLEAN_STATUS"
 }
 
 cmd_load_config() {
@@ -788,7 +892,9 @@ cmd_load_config() {
       "port": 22,
       "user": "root",
       "key": "/home/root/.ssh/id_dropbear",
-      "remotePath": "~"
+      "remotePath": "~",
+      "useTailscale": false,
+      "tailscaleTarget": ""
     }
   ]
 }
@@ -985,6 +1091,9 @@ case "$ACTION" in
         ;;
     import-local)
         cmd_import_local_pdf "$@"
+        ;;
+    check-tailscale)
+        cmd_check_tailscale "$@"
         ;;
     test-loopback)
         cmd_test_loopback "$@"

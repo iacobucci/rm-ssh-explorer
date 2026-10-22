@@ -12,6 +12,10 @@ Item {
     property string user: "root"
     property string keyPath: "/home/root/.ssh/id_dropbear"
     property string remotePath: "~"
+    property bool useTailscale: false
+    property string tailscaleTarget: ""
+    property string tailscaleStatusText: ""
+    property bool isTailscaleInstalled: false
 
     property string statusMessage: ""
     property bool isTesting: false
@@ -27,12 +31,13 @@ Item {
         return false;
     }
 
-    signal requestConnect(string host, int port, string user, string key, string path)
-    signal requestTest(string host, int port, string user, string key)
-    signal requestSaveProfile(string name, string host, int port, string user, string key, string path)
+    signal requestConnect(string host, int port, string user, string key, string path, bool useTailscale, string tailscaleTarget)
+    signal requestTest(string host, int port, string user, string key, bool useTailscale, string tailscaleTarget)
+    signal requestSaveProfile(string name, string host, int port, string user, string key, string path, bool useTailscale, string tailscaleTarget)
     signal requestDeleteProfile(string name)
     signal requestTestLoopback()
     signal requestEnableLoopback()
+    signal requestCheckTailscale()
     signal inputFocused(var item)
 
     property string loopbackInfoText: ""
@@ -45,6 +50,8 @@ Item {
         user = p.user || "root";
         keyPath = p.key !== undefined ? p.key : "/home/root/.ssh/id_dropbear";
         remotePath = p.remotePath || "~";
+        useTailscale = !!p.useTailscale;
+        tailscaleTarget = p.tailscaleTarget || "";
         statusMessage = "";
     }
 
@@ -148,6 +155,8 @@ Item {
                                 connectionViewRoot.user = "root";
                                 connectionViewRoot.keyPath = "/home/root/.ssh/id_dropbear";
                                 connectionViewRoot.remotePath = "~";
+                                connectionViewRoot.useTailscale = false;
+                                connectionViewRoot.tailscaleTarget = "";
                                 connectionViewRoot.statusMessage = "";
                             }
                         }
@@ -363,6 +372,136 @@ Item {
                             }
                         }
                     }
+
+                    // Divider
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: Style.subtleBorder
+                    }
+
+                    // Tailscale Proxy Option
+                    Row {
+                        width: parent.width
+                        spacing: 12
+
+                        Text {
+                            width: 130
+                            text: "Tailscale Proxy:"
+                            font.pixelSize: Style.fontSizeBody
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Style.fg
+                        }
+
+                        // Toggle Checkbox Button
+                        Rectangle {
+                            width: 165
+                            height: Style.inputHeight
+                            color: tsMa.pressed ? Style.activeHighlight : (connectionViewRoot.useTailscale ? Style.invertedBg : Style.bg)
+                            border.color: Style.border
+                            border.width: Style.borderWidth
+                            radius: Style.cornerRadius
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 10
+
+                                Rectangle {
+                                    width: 22
+                                    height: 22
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: connectionViewRoot.useTailscale ? Style.invertedFg : Style.bg
+                                    border.color: connectionViewRoot.useTailscale ? Style.invertedFg : Style.fg
+                                    border.width: 2
+                                    radius: 3
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "✓"
+                                        font.pixelSize: 15
+                                        font.bold: true
+                                        visible: connectionViewRoot.useTailscale
+                                        color: Style.invertedBg
+                                    }
+                                }
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: connectionViewRoot.useTailscale ? "Tailscale ON" : "Tailscale OFF"
+                                    font.pixelSize: Style.fontSizeBody
+                                    font.bold: true
+                                    color: connectionViewRoot.useTailscale ? Style.invertedFg : Style.fg
+                                }
+                            }
+
+                            MouseArea {
+                                id: tsMa
+                                anchors.fill: parent
+                                onClicked: {
+                                    connectionViewRoot.useTailscale = !connectionViewRoot.useTailscale;
+                                    if (connectionViewRoot.useTailscale && connectionViewRoot.tailscaleStatusText === "") {
+                                        connectionViewRoot.requestCheckTailscale();
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: connectionViewRoot.tailscaleStatusText !== "" ? connectionViewRoot.tailscaleStatusText : "Uses 'tailscale nc' tunnel (-J)"
+                            font.pixelSize: Style.fontSizeSmall
+                            color: Style.subtleFg
+                            elide: Text.ElideRight
+                            width: parent.width - 142 - 177
+                        }
+                    }
+
+                    // Optional Tailscale Target Node (only visible when useTailscale is true)
+                    Row {
+                        width: parent.width
+                        spacing: 12
+                        visible: connectionViewRoot.useTailscale
+
+                        Text {
+                            width: 130
+                            text: "Target Node:"
+                            font.pixelSize: Style.fontSizeBody
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Style.fg
+                        }
+
+                        Rectangle {
+                            width: parent.width - 142
+                            height: Style.inputHeight
+                            color: Style.bg
+                            border.color: tsTargetInp.activeFocus ? Style.border : Style.subtleBorder
+                            border.width: tsTargetInp.activeFocus ? Style.borderWidth : 1
+                            radius: 3
+
+                            TextInput {
+                                id: tsTargetInp
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                verticalAlignment: TextInput.AlignVCenter
+                                font.pixelSize: Style.fontSizeBody
+                                text: connectionViewRoot.tailscaleTarget
+                                color: Style.fg
+                                selectByMouse: true
+                                onTextChanged: connectionViewRoot.tailscaleTarget = text
+                                onActiveFocusChanged: if (activeFocus) connectionViewRoot.inputFocused(tsTargetInp)
+                            }
+
+                            Text {
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                verticalAlignment: TextInput.AlignVCenter
+                                text: connectionViewRoot.host !== "" ? ("Default: " + connectionViewRoot.host + ":" + connectionViewRoot.port) : "Leave empty to use Host / IP (e.g. rock-3c)"
+                                font.pixelSize: Style.fontSizeSmall
+                                color: "#888888"
+                                visible: connectionViewRoot.tailscaleTarget === "" && !tsTargetInp.activeFocus
+                            }
+                        }
+                    }
                 }
             }
 
@@ -419,7 +558,14 @@ Item {
                             anchors.fill: parent
                             enabled: !connectionViewRoot.isTesting && connectionViewRoot.host !== ""
                             onClicked: {
-                                connectionViewRoot.requestTest(connectionViewRoot.host, connectionViewRoot.port, connectionViewRoot.user, connectionViewRoot.keyPath);
+                                connectionViewRoot.requestTest(
+                                    connectionViewRoot.host,
+                                    connectionViewRoot.port,
+                                    connectionViewRoot.user,
+                                    connectionViewRoot.keyPath,
+                                    connectionViewRoot.useTailscale,
+                                    connectionViewRoot.tailscaleTarget
+                                );
                             }
                         }
                     }
@@ -477,7 +623,9 @@ Item {
                                     connectionViewRoot.port,
                                     connectionViewRoot.user,
                                     connectionViewRoot.keyPath,
-                                    connectionViewRoot.remotePath
+                                    connectionViewRoot.remotePath,
+                                    connectionViewRoot.useTailscale,
+                                    connectionViewRoot.tailscaleTarget
                                 );
                             }
                         }
@@ -511,7 +659,9 @@ Item {
                                 connectionViewRoot.port,
                                 connectionViewRoot.user,
                                 connectionViewRoot.keyPath,
-                                connectionViewRoot.remotePath
+                                connectionViewRoot.remotePath,
+                                connectionViewRoot.useTailscale,
+                                connectionViewRoot.tailscaleTarget
                             );
                         }
                     }

@@ -22,6 +22,26 @@ Rectangle {
     property string activeUser: "root"
     property string activeKey: "/home/root/.ssh/id_dropbear"
     property string activeRemotePath: "~"
+    property bool activeUseTailscale: false
+    property string activeTailscaleTarget: ""
+
+    // Tailscale detection
+    function checkTailscaleStatus() {
+        var res = runHelper("check-tailscale", []);
+        if (res && res.success) {
+            if (res.installed) {
+                connectionView.isTailscaleInstalled = true;
+                if (res.running && res.ip) {
+                    connectionView.tailscaleStatusText = "Tailscale: " + res.ip;
+                } else {
+                    connectionView.tailscaleStatusText = "Tailscale CLI installed";
+                }
+            } else {
+                connectionView.isTailscaleInstalled = false;
+                connectionView.tailscaleStatusText = "Tailscale not found in PATH";
+            }
+        }
+    }
 
     // No-Restart / Loopback state
     property bool isLoopbackReady: false
@@ -104,7 +124,7 @@ Rectangle {
         }
     }
 
-    function saveProfile(name, host, port, user, key, path) {
+    function saveProfile(name, host, port, user, key, path, useTailscale, tailscaleTarget) {
         var profiles = configData.profiles || [];
         var updated = false;
         for (var i = 0; i < profiles.length; i++) {
@@ -114,6 +134,8 @@ Rectangle {
                 profiles[i].user = user;
                 profiles[i].key = key;
                 profiles[i].remotePath = path;
+                profiles[i].useTailscale = !!useTailscale;
+                profiles[i].tailscaleTarget = tailscaleTarget || "";
                 updated = true;
                 break;
             }
@@ -125,7 +147,9 @@ Rectangle {
                 port: port,
                 user: user,
                 key: key,
-                remotePath: path
+                remotePath: path,
+                useTailscale: !!useTailscale,
+                tailscaleTarget: tailscaleTarget || ""
             });
         }
         configData.profiles = profiles;
@@ -158,7 +182,9 @@ Rectangle {
                 port: 22,
                 user: "root",
                 key: "/home/root/.ssh/id_dropbear",
-                remotePath: "~"
+                remotePath: "~",
+                useTailscale: false,
+                tailscaleTarget: ""
             });
         }
         configData.profiles = newProfiles;
@@ -178,12 +204,14 @@ Rectangle {
     }
 
     // Connection & Navigation
-    function startBrowse(host, port, user, key, initialPath) {
+    function startBrowse(host, port, user, key, initialPath, useTailscale, tailscaleTarget) {
         activeHost = host;
         activePort = port;
         activeUser = user;
         activeKey = key;
         activeRemotePath = initialPath;
+        activeUseTailscale = !!useTailscale;
+        activeTailscaleTarget = tailscaleTarget || "";
 
         virtualKeyboard.visible = false;
         currentMode = "explorer";
@@ -210,7 +238,9 @@ Rectangle {
                 appRoot.activePort.toString(),
                 appRoot.activeUser,
                 appRoot.activeKey,
-                fetchTimer.targetPath
+                fetchTimer.targetPath,
+                appRoot.activeUseTailscale ? "1" : "0",
+                appRoot.activeTailscaleTarget
             ]);
 
             explorerView.isLoading = false;
@@ -247,7 +277,9 @@ Rectangle {
                 appRoot.activeUser,
                 appRoot.activeKey,
                 searchTimer.targetPath,
-                searchTimer.searchQuery
+                searchTimer.searchQuery,
+                appRoot.activeUseTailscale ? "1" : "0",
+                appRoot.activeTailscaleTarget
             ]);
 
             explorerView.isLoading = false;
@@ -273,7 +305,9 @@ Rectangle {
             appRoot.activeUser,
             appRoot.activeKey,
             remoteFilePath,
-            title
+            title,
+            appRoot.activeUseTailscale ? "1" : "0",
+            appRoot.activeTailscaleTarget
         ]);
 
         if (res && res.success) {
@@ -354,6 +388,7 @@ Rectangle {
     Component.onCompleted: {
         loadConfig();
         loopbackTimer.start();
+        checkTailscaleStatus();
     }
 
     // Top Navigation Header
@@ -389,7 +424,7 @@ Rectangle {
                 Text {
                     id: hostStatusText
                     anchors.centerIn: parent
-                    text: appRoot.currentMode === "explorer" ? (appRoot.activeUser + "@" + appRoot.activeHost) : "Not Connected"
+                    text: appRoot.currentMode === "explorer" ? (appRoot.activeUser + "@" + appRoot.activeHost + (appRoot.activeUseTailscale ? " [TS]" : "")) : "Not Connected"
                     font.pixelSize: Style.fontSizeSmall
                     font.bold: true
                     color: appRoot.currentMode === "explorer" ? Style.fg : "#AAAAAA"
@@ -516,27 +551,33 @@ Rectangle {
             anchors.fill: parent
             visible: appRoot.currentMode === "connection"
 
-            onRequestConnect: (h, p, u, k, path) => {
-                appRoot.startBrowse(h, p, u, k, path);
+            onRequestConnect: (h, p, u, k, path, useTs, tsTarget) => {
+                appRoot.startBrowse(h, p, u, k, path, useTs, tsTarget);
             }
 
-            onRequestTest: (h, p, u, k) => {
+            onRequestTest: (h, p, u, k, useTs, tsTarget) => {
                 connectionView.isTesting = true;
                 connectionView.statusMessage = "";
                 testTimer.testHost = h;
                 testTimer.testPort = p;
                 testTimer.testUser = u;
                 testTimer.testKey = k;
+                testTimer.testUseTailscale = !!useTs;
+                testTimer.testTailscaleTarget = tsTarget || "";
                 testTimer.restart();
             }
 
-            onRequestSaveProfile: (name, h, p, u, k, path) => {
-                appRoot.saveProfile(name, h, p, u, k, path);
+            onRequestSaveProfile: (name, h, p, u, k, path, useTs, tsTarget) => {
+                appRoot.saveProfile(name, h, p, u, k, path, useTs, tsTarget);
             }
 
             onRequestDeleteProfile: (name) => {
                 virtualKeyboard.visible = false;
                 appRoot.deleteProfile(name);
+            }
+
+            onRequestCheckTailscale: {
+                appRoot.checkTailscaleStatus();
             }
 
             onRequestTestLoopback: {
@@ -576,6 +617,8 @@ Rectangle {
             property int testPort: 22
             property string testUser: "root"
             property string testKey: ""
+            property bool testUseTailscale: false
+            property string testTailscaleTarget: ""
             interval: 50
             repeat: false
             onTriggered: {
@@ -583,7 +626,9 @@ Rectangle {
                     testTimer.testHost,
                     testTimer.testPort.toString(),
                     testTimer.testUser,
-                    testTimer.testKey
+                    testTimer.testKey,
+                    testTimer.testUseTailscale ? "1" : "0",
+                    testTimer.testTailscaleTarget
                 ]);
 
                 connectionView.isTesting = false;

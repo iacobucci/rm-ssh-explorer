@@ -14,7 +14,7 @@
 
 - **E-Ink Optimized UI:** High-contrast monochrome interface designed for minimal flicker, with dedicated Page Up / Page Down controls.
 - **On-Screen Touch Keyboard:** Integrated virtual keyboard for typing hosts, paths, and credentials directly on the tablet.
-- **Connection Profiles:** Save, test, and delete multiple SSH profiles stored in `~/.config/ssh-explorer/config.json`.
+- **Connection Profiles & Tailscale Proxy:** Save, test, and delete multiple SSH profiles stored in `~/.config/ssh-explorer/config.json`. Directly connect across your private Tailnet using `tailscale nc` without modifying Dropbear on the tablet (`dbclient -J 'tailscale nc <host> <port>'`).
 - **Fast Directory Traversal & Filters:** Browse remote folders with an integrated real-time search bar, quick filter toggles for *PDFs Only* and *Hidden Files* (dotfiles), plus human-readable file sizes.
 - **⚡ Smart No-Restart PDF Import (USB Web Server Loopback):**
   - **Live Library Refresh:** Uploads documents directly through reMarkable's internal web server (`http://10.11.99.1/upload` via loopback). Documents appear in the `xochitl` library **instantly without restarting the UI** and without closing SSH Explorer!
